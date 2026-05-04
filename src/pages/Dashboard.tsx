@@ -165,7 +165,7 @@ export default function Dashboard() {
           { label: 'Đang xử lý', value: `${pendingCount}`, icon: CheckCircle2, trend: 'Review/KYC/duyệt' },
         ];
 
-  const displayDeals = profile?.userType === 'admin' ? deals.filter(d => d.sellerId === user?.uid) : deals;
+  const displayDeals = deals;
 
   return (
     <div className="space-y-8">
