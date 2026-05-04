@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitives & Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 256 &&
+             data.userType in ['buyer', 'seller', 'advisor', 'admin'] &&
+             data.kycStatus in ['unverified', 'pending', 'verified', 'rejected'] &&
+             data.createdAt is string;
+    }
+
+    function isValidDeal(data) {
+      return data.sellerId is string && data.sellerId.size() <= 128 &&
+             data.title is string && data.title.size() <= 200 &&
+             data.status in ['draft', 'submitted', 'under_review', 'approved', 'published', 'negotiation', 'closed'] &&
+             data.mandaInfo.valuation is number && data.mandaInfo.valuation >= 0;
+    }
+
+    // Phase 4: Match Blocks
+
+    // User Records
+    match /users/{uid} {
+      // Allow user to read their own profile, or allowing search for public verification?
+      // Strict: Only own profile read for PII protection.
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && isValidUser(incoming()) && incoming().kycStatus == 'unverified';
+      allow update: if isOwner(uid) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'country', 'updatedAt', 'userType']) &&
+                    incoming().kycStatus == existing().kycStatus; // KYC can't be self-updated
+    }
+
+    // Company Records
+    match /companies/{companyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(incoming().ownerId);
+      allow update: if isOwner(existing().ownerId) && 
+                    incoming().ownerId == existing().ownerId;
+    }
+
+    // Deal Records
+    match /deals/{dealId} {
+      // FIX: Allow public read of published deals for marketplace browsing
+      allow read: if (resource.data.status == 'published') || isOwner(resource.data.sellerId);
+      
+      // Strict query enforcement for listing
+      allow list: if (resource.data.status == 'published') || (isSignedIn() && resource.data.sellerId == request.auth.uid);
+
+      allow create: if isSignedIn() && isOwner(incoming().sellerId) && isValidDeal(incoming());
+      
+      allow update: if (isOwner(existing().sellerId) && isValidDeal(incoming()) && (
+        // Prevent self-publishing if that requires review
+        (incoming().status == existing().status || (existing().status == 'approved' && incoming().status == 'published')) &&
+        incoming().sellerId == existing().sellerId
+      ));
+
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.sellerId;
+
+      // Subcollections
+      match /documents/{docId} {
+        // Documents should probably be restricted to people involved or people who signed NDA
+        // For now, allow read if deal is published or owner
+        allow read: if (get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published') || 
+                     isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId);
+        allow write: if isSignedIn() && isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId);
+      }
+
+      match /offers/{offerId} {
+        allow read: if isSignedIn() && (isOwner(resource.data.buyerId) || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
+        allow create: if isSignedIn() && isOwner(incoming().buyerId) && 
+                      get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published';
+        allow update: if isSignedIn() && (isOwner(resource.data.buyerId) || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
+      }
+
+      match /messages/{msgId} {
+        allow read: if isSignedIn() && (isOwner(resource.data.senderId) || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
+        allow create: if isSignedIn() && incoming().dealId == dealId;
+      }
+    }
+  }
+}

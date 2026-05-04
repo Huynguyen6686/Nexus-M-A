@@ -1,0 +1,6 @@
+{
+  "name": "Nexus M&A Enterprise",
+  "description": "A comprehensive platform for Mergers & Acquisitions, featuring deal listings, secure data rooms, AI-powered investor matching, and end-to-end transaction management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["AI-powered deal matching", "Secure data room management", "End-to-end M&A workflow"]
+}
