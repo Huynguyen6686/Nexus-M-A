@@ -165,6 +165,8 @@ export default function Dashboard() {
           { label: 'Đang xử lý', value: `${pendingCount}`, icon: CheckCircle2, trend: 'Review/KYC/duyệt' },
         ];
 
+  const displayDeals = profile?.userType === 'admin' ? deals.filter(d => d.sellerId === user?.uid) : deals;
+
   return (
     <div className="space-y-8">
       {/* Welcome Header */}
@@ -212,21 +214,28 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Deal Management Section */}
         <div className="lg:col-span-2 space-y-4">
+            <div className="metric-label mt-1">{kpi.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Deal Management Section */}
+        <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-slate-800">{t('portfolioLifecycle')}</h2>
             <Link to="/" className="text-xs text-blue-600 font-semibold hover:underline">{t('marketplace')} →</Link>
           </div>
 
           <div className="space-y-3">
-            {deals.length > 0 ? (
-              deals.map(deal => (
+            {displayDeals.length > 0 ? (
+              displayDeals.map(deal => (
                 <div 
                   key={deal.id} 
                   className="glass-card p-4 rounded-xl flex items-center justify-between hover:border-blue-400 transition-all bg-white overflow-hidden"
                 >
                   <div 
                     className="flex min-w-0 gap-4 cursor-pointer flex-1"
-                    onClick={() => navigate(`/deals/${deal.id}`)}
                   >
                     <div className="w-12 h-12 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center font-bold text-slate-600 flex-shrink-0">
                       {deal.title.substring(0, 2).toUpperCase()}
