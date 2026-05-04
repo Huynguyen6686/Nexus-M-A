@@ -3,14 +3,14 @@ import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { UserRole, UserProfile } from '../types';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useLanguage } from '../context/LanguageContext';
 import { motion } from 'motion/react';
 import { ShieldCheck, User, Building, Briefcase, ArrowRight, ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export default function ProfileSetup() {
-  const { user, setProfile } = useAuth();
+  const { user, profile, setProfile } = useAuth();
   const { t } = useLanguage();
   const [role, setRole] = useState<UserRole>('buyer');
   const [country, setCountry] = useState('Vietnam');
@@ -18,6 +18,7 @@ export default function ProfileSetup() {
   const navigate = useNavigate();
 
   if (!user) return null;
+  if (profile?.userType) return <Navigate to="/" replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +39,7 @@ export default function ProfileSetup() {
     try {
       await setDoc(doc(db, 'users', user.uid), newProfile);
       setProfile(newProfile);
-      navigate('/dashboard');
+      navigate('/', { replace: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
     } finally {

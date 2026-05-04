@@ -1,19 +1,35 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithGoogle } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { db, signInWithGoogle } from '../lib/firebase';
 import { ShieldCheck, ArrowRight, Shield, Globe, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../hooks/useAuth';
 
 export default function Login() {
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const { user, profile, loading } = useAuth();
+  const [signingIn, setSigningIn] = useState(false);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    navigate(profile?.userType ? '/' : '/profile-setup', { replace: true });
+  }, [loading, navigate, profile?.userType, user]);
 
   const handleLogin = async () => {
+    if (signingIn) return;
+    setSigningIn(true);
     try {
-      await signInWithGoogle();
-      navigate('/dashboard');
+      const signedInUser = await signInWithGoogle();
+      const profileSnap = await getDoc(doc(db, 'users', signedInUser.uid));
+      const existingProfile = profileSnap.exists() ? profileSnap.data() : null;
+      navigate(existingProfile?.userType ? '/' : '/profile-setup', { replace: true });
     } catch (error) {
       console.error('Login failed:', error);
+    } finally {
+      setSigningIn(false);
     }
   };
 
@@ -68,10 +84,11 @@ export default function Login() {
             <div className="space-y-4">
               <button 
                 onClick={handleLogin}
+                disabled={signingIn}
                 className="w-full flex items-center justify-center gap-3 py-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 hover:border-slate-200 hover:bg-slate-50 transition-all active:scale-[0.98]"
               >
                 <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 opacity-70" />
-                {t('continueWithGoogle')}
+                {signingIn ? t('saving') : t('continueWithGoogle')}
               </button>
 
               <div className="relative py-4">

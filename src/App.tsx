@@ -13,15 +13,19 @@ import ProfileSetup from './pages/ProfileSetup';
 import Profile from './pages/Profile';
 import MarketingCenter from './pages/MarketingCenter';
 import Admin from './pages/Admin';
+import Resources from './pages/Resources';
+import Network from './pages/Network';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserRole } from './types';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
+  const isProfileSetup = window.location.pathname === '/profile-setup';
 
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
   if (!user) return <Navigate to="/login" />;
-  if (!profile && window.location.pathname !== '/profile-setup') return <Navigate to="/profile-setup" />;
+  if (!profile && !isProfileSetup) return <Navigate to="/profile-setup" />;
+  if (profile?.userType && isProfileSetup) return <Navigate to="/" />;
 
   return <>{children}</>;
 }
@@ -50,6 +54,8 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/deals/:id" element={<DealDetail />} />
+                <Route path="/resources" element={<Resources />} />
+                <Route path="/network" element={<Network />} />
                 
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/profile-setup" element={<ProtectedRoute><ProfileSetup /></ProtectedRoute>} />

@@ -13,6 +13,7 @@ export default function Home() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const heroSubtitle = t('heroSubtitle').replace(/^Để/u, 'để');
 
   useEffect(() => {
     const fetchDeals = async () => {
@@ -54,7 +55,7 @@ export default function Home() {
             className="text-4xl md:text-6xl font-bold tracking-tight leading-[1.1] text-white"
           >
             {t('heroTitle')} <br />
-            <span className="text-blue-400">{t('heroSubtitle')}</span>
+            <span className="text-blue-400">{heroSubtitle}</span>
           </motion.h1>
           
           <motion.p

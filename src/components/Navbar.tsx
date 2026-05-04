@@ -51,7 +51,7 @@ export default function Navbar() {
             <div className="hidden md:flex items-center gap-6">
               <Link to="/" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors uppercase tracking-wider">{t('marketplace')}</Link>
               <Link to="/resources" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors uppercase tracking-wider">{t('resources')}</Link>
-              <Link to="/about" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors uppercase tracking-wider">{t('network')}</Link>
+              <Link to="/network" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors uppercase tracking-wider">{t('network')}</Link>
             </div>
           </div>
 
