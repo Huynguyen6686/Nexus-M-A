@@ -86,15 +86,52 @@ service cloud.firestore {
       }
 
       match /offers/{offerId} {
-        allow read: if isSignedIn() && (isOwner(resource.data.buyerId) || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
-        allow create: if canInvest() && isOwner(incoming().buyerId) && 
-                      get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published';
-        allow update: if isSignedIn() && (isOwner(resource.data.buyerId) || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
+        allow read: if isSignedIn() && (
+          isAdmin() ||
+          isOwner(resource.data.buyerId) ||
+          isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId)
+        );
+        allow create: if isSignedIn() &&
+          incoming().dealId == dealId &&
+          incoming().status == 'pending' &&
+          incoming().amount is number &&
+          incoming().amount >= 0 &&
+          incoming().equity is number &&
+          incoming().equity >= 0 &&
+          incoming().equity <= 100 &&
+          (
+            (
+              canInvest() &&
+              isOwner(incoming().buyerId) &&
+              incoming().sellerId == get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId &&
+              get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published'
+            ) ||
+            (
+              (isAdmin() || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId)) &&
+              incoming().type == 'counter' &&
+              incoming().sellerId == get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId
+            )
+          );
+        allow update: if isSignedIn() && (
+          isAdmin() ||
+          isOwner(resource.data.buyerId) ||
+          isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId)
+        );
       }
 
       match /messages/{msgId} {
-        allow read: if isSignedIn() && (isOwner(resource.data.senderId) || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
-        allow create: if isSignedIn() && incoming().dealId == dealId;
+        allow read: if isSignedIn() && (
+          isAdmin() ||
+          request.auth.uid in resource.data.participantIds ||
+          isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId)
+        );
+        allow create: if isSignedIn() &&
+          incoming().dealId == dealId &&
+          incoming().senderId == request.auth.uid &&
+          incoming().content is string &&
+          incoming().content.size() <= 2000 &&
+          incoming().participantIds is list &&
+          request.auth.uid in incoming().participantIds;
       }
     }
   }

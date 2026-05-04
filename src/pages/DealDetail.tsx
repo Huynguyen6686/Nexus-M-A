@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { doc, getDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, getDocs, addDoc, onSnapshot, orderBy, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { Deal, DealDocument, Offer } from '../types';
+import { Deal, DealDocument, Message, Offer } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { 
   Building2, MapPin, TrendingUp, DollarSign, Calendar, Target,
@@ -23,7 +23,16 @@ export default function DealDetail() {
   const [loading, setLoading] = useState(true);
   const [ndaSigned, setNdaSigned] = useState(false);
   const [offerLoading, setOfferLoading] = useState(false);
-  const [offerSent, setOfferSent] = useState(false);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [offerAmount, setOfferAmount] = useState('');
+  const [offerEquity, setOfferEquity] = useState('');
+  const [offerNote, setOfferNote] = useState('');
+  const [counterOfferId, setCounterOfferId] = useState<string | null>(null);
+  const [counterAmount, setCounterAmount] = useState('');
+  const [counterEquity, setCounterEquity] = useState('');
+  const [counterNote, setCounterNote] = useState('');
+  const [messageText, setMessageText] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'matching'>('overview');
 
   useEffect(() => {
@@ -50,24 +59,118 @@ export default function DealDetail() {
     fetchDeal();
   }, [id, navigate]);
 
+  useEffect(() => {
+    if (!id || !user) return;
+
+    const offersQ = query(collection(db, `deals/${id}/offers`), orderBy('createdAt', 'desc'));
+    const unsubscribeOffers = onSnapshot(offersQ, (snap) => {
+      const nextOffers = snap.docs.map(d => ({ id: d.id, ...d.data() } as Offer));
+      setOffers(nextOffers);
+    }, (error) => handleFirestoreError(error, OperationType.READ, `deals/${id}/offers`));
+
+    const messagesQ = query(collection(db, `deals/${id}/messages`), orderBy('createdAt', 'asc'));
+    const unsubscribeMessages = onSnapshot(messagesQ, (snap) => {
+      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() } as Message)));
+    }, (error) => handleFirestoreError(error, OperationType.READ, `deals/${id}/messages`));
+
+    return () => {
+      unsubscribeOffers();
+      unsubscribeMessages();
+    };
+  }, [id, user]);
+
   const handleSendOffer = async () => {
-    if (!user || !deal || offerSent) return;
+    if (!user || !deal) return;
+    const amount = Number(offerAmount) || deal.mandaInfo.valuation;
+    const equity = Math.min(100, Math.max(0, Number(offerEquity) || deal.mandaInfo.equityOffered));
     setOfferLoading(true);
     try {
+      const now = new Date().toISOString();
       const offerData: Partial<Offer> = {
         dealId: deal.id,
         buyerId: user.uid,
-        amount: deal.mandaInfo.valuation,
-        equity: deal.mandaInfo.equityOffered,
+        sellerId: deal.sellerId,
+        createdBy: user.uid,
+        type: 'offer',
+        amount,
+        equity,
+        note: offerNote.trim(),
         status: 'pending',
-        createdAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       };
       await addDoc(collection(db, `deals/${deal.id}/offers`), offerData);
-      setOfferSent(true);
+      setOfferAmount('');
+      setOfferEquity('');
+      setOfferNote('');
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `deals/${deal.id}/offers`);
     } finally {
       setOfferLoading(false);
+    }
+  };
+
+  const handleCounterOffer = async (offer: Offer) => {
+    if (!user || !deal) return;
+    const amount = Number(counterAmount) || offer.amount;
+    const equity = Math.min(100, Math.max(0, Number(counterEquity) || offer.equity));
+    const now = new Date().toISOString();
+    try {
+      await addDoc(collection(db, `deals/${deal.id}/offers`), {
+        dealId: deal.id,
+        buyerId: offer.buyerId,
+        sellerId: deal.sellerId,
+        createdBy: user.uid,
+        type: 'counter',
+        parentOfferId: offer.id,
+        amount,
+        equity,
+        note: counterNote.trim(),
+        status: 'pending',
+        createdAt: now,
+        updatedAt: now,
+      });
+      await updateDoc(doc(db, `deals/${deal.id}/offers`, offer.id), {
+        status: 'countered',
+        updatedAt: now,
+      });
+      setCounterOfferId(null);
+      setCounterAmount('');
+      setCounterEquity('');
+      setCounterNote('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `deals/${deal.id}/offers`);
+    }
+  };
+
+  const handleOfferStatus = async (offer: Offer, status: Offer['status']) => {
+    if (!deal) return;
+    try {
+      await updateDoc(doc(db, `deals/${deal.id}/offers`, offer.id), {
+        status,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `deals/${deal.id}/offers/${offer.id}`);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!user || !deal || !messageText.trim()) return;
+    const participants = Array.from(new Set([user.uid, deal.sellerId, ...offers.map(o => o.buyerId)]));
+    try {
+      await addDoc(collection(db, `deals/${deal.id}/messages`), {
+        dealId: deal.id,
+        senderId: user.uid,
+        senderName: profile?.displayName || user.email || 'Người dùng',
+        participantIds: participants,
+        content: messageText.trim().slice(0, 2000),
+        type: 'text',
+        createdAt: new Date().toISOString(),
+      });
+      setMessageText('');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `deals/${deal.id}/messages`);
     }
   };
 
@@ -80,6 +183,16 @@ export default function DealDetail() {
   const equityOffered = Math.min(100, Math.max(0, Number(deal.mandaInfo.equityOffered) || 0));
   const ebitdaMargin = Math.min(100, Math.max(0, latestRevenue > 0 ? (deal.financials.ebitda / latestRevenue * 100) : 0)).toFixed(1);
   const canInvest = profile?.userType === 'buyer' || profile?.userType === 'advisor' || profile?.userType === 'admin';
+  const isSellerOwner = profile?.userType === 'admin' || deal.sellerId === user?.uid;
+  const canUseDealRoom = Boolean(user && (isSellerOwner || canInvest));
+  const ownLatestOffer = offers.find(offer => offer.buyerId === user?.uid);
+  const offerStatusLabel: Record<Offer['status'], string> = {
+    pending: 'Chờ phản hồi',
+    countered: 'Đã phản hồi lại',
+    accepted: 'Đã chấp nhận',
+    rejected: 'Đã từ chối',
+    withdrawn: 'Đã rút',
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-24">
@@ -273,17 +386,46 @@ export default function DealDetail() {
             <h3 className="text-lg font-bold text-slate-900 mb-6">{t('investmentActions')}</h3>
             
             <div className="space-y-4">
+              {canInvest && (
+                <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={offerAmount}
+                      onChange={(e) => setOfferAmount(e.target.value.replace(/[^\d.]/g, '').slice(0, 14))}
+                      placeholder="Giá đề nghị"
+                      className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold outline-none focus:border-blue-500"
+                    />
+                    <input
+                      value={offerEquity}
+                      onChange={(e) => setOfferEquity(e.target.value.replace(/[^\d.]/g, '').slice(0, 5))}
+                      placeholder="% cổ phần"
+                      className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <textarea
+                    value={offerNote}
+                    onChange={(e) => setOfferNote(e.target.value.slice(0, 280))}
+                    placeholder="Ghi chú cho bên bán"
+                    rows={2}
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
               <button 
                 onClick={handleSendOffer}
-                disabled={offerLoading || offerSent || !canInvest}
+                disabled={offerLoading || !canInvest}
                 className={cn(
                   "w-full professional-btn py-3 text-sm tracking-widest uppercase",
-                  !canInvest && "cursor-not-allowed bg-slate-300 hover:bg-slate-300",
-                  offerSent && "bg-green-600 hover:bg-green-700"
+                  !canInvest && "cursor-not-allowed bg-slate-300 hover:bg-slate-300"
                 )}
               >
-                {offerLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : offerSent ? t('offerSentBtn') : canInvest ? t('submitOfferBtn') : t('onlyBuyerAdvisor')}
+                {offerLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : canInvest ? t('submitOfferBtn') : t('onlyBuyerAdvisor')}
               </button>
+              {ownLatestOffer && (
+                <p className="text-[11px] font-bold text-slate-500">
+                  Offer gần nhất: <span className="text-blue-600">{offerStatusLabel[ownLatestOffer.status]}</span>
+                </p>
+              )}
               
               {!ndaSigned ? (
                 <button 
@@ -315,6 +457,106 @@ export default function DealDetail() {
               </div>
             </div>
           </div>
+
+          {canUseDealRoom && (
+            <div className="glass-card p-5 rounded-3xl bg-white space-y-5">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-slate-900">Lịch sử offer</h3>
+                <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-600">{offers.length}</span>
+              </div>
+              <div className="max-h-96 space-y-3 overflow-y-auto pr-1">
+                {offers.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-slate-200 p-4 text-xs font-medium text-slate-500">Chưa có offer nào cho thương vụ này.</p>
+                ) : offers.map((offer) => {
+                  const isCounter = offer.type === 'counter';
+                  const canAnswer = offer.status === 'pending' && (
+                    (isCounter && offer.buyerId === user?.uid) ||
+                    (!isCounter && isSellerOwner)
+                  );
+                  return (
+                    <div key={offer.id} className="rounded-2xl border border-slate-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold uppercase tracking-wider text-slate-400">{isCounter ? 'Counter-offer' : 'Offer'}</div>
+                          <div className="truncate text-lg font-bold text-slate-900" title={formatCurrency(offer.amount, lang)}>
+                            {formatCompactNumber(offer.amount, lang)}
+                          </div>
+                          <div className="text-[11px] font-bold text-slate-500">{Math.min(100, Math.max(0, Number(offer.equity) || 0))}% cổ phần</div>
+                        </div>
+                        <span className={cn(
+                          "shrink-0 rounded-full px-2 py-1 text-[10px] font-bold",
+                          offer.status === 'accepted' ? "bg-green-50 text-green-600" :
+                          offer.status === 'rejected' ? "bg-rose-50 text-rose-600" :
+                          "bg-blue-50 text-blue-600"
+                        )}>
+                          {offerStatusLabel[offer.status]}
+                        </span>
+                      </div>
+                      {offer.note && <p className="mt-3 whitespace-pre-wrap break-words text-xs font-medium leading-relaxed text-slate-600">{offer.note}</p>}
+                      <div className="mt-3 text-[10px] font-bold text-slate-400">{new Date(offer.createdAt).toLocaleString('vi-VN')}</div>
+                      {canAnswer && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button onClick={() => handleOfferStatus(offer, 'accepted')} className="rounded-xl bg-green-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white">Chấp nhận</button>
+                          <button onClick={() => handleOfferStatus(offer, 'rejected')} className="rounded-xl bg-rose-600 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-white">Từ chối</button>
+                          {isSellerOwner && !isCounter && (
+                            <button onClick={() => setCounterOfferId(counterOfferId === offer.id ? null : offer.id)} className="rounded-xl border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600">Counter</button>
+                          )}
+                        </div>
+                      )}
+                      {counterOfferId === offer.id && (
+                        <div className="mt-4 space-y-2 rounded-2xl bg-slate-50 p-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <input value={counterAmount} onChange={(e) => setCounterAmount(e.target.value.replace(/[^\d.]/g, '').slice(0, 14))} placeholder="Giá mới" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none" />
+                            <input value={counterEquity} onChange={(e) => setCounterEquity(e.target.value.replace(/[^\d.]/g, '').slice(0, 5))} placeholder="% mới" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none" />
+                          </div>
+                          <textarea value={counterNote} onChange={(e) => setCounterNote(e.target.value.slice(0, 280))} placeholder="Ghi chú counter-offer" rows={2} className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium outline-none" />
+                          <button onClick={() => handleCounterOffer(offer)} className="w-full rounded-xl bg-blue-600 py-2 text-xs font-bold uppercase tracking-wider text-white">Gửi counter-offer</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {canUseDealRoom && (
+            <div className="glass-card p-5 rounded-3xl bg-white space-y-4">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="h-4 w-4 text-blue-600" />
+                <h3 className="text-sm font-bold uppercase tracking-widest text-slate-900">Chat theo thương vụ</h3>
+              </div>
+              <div className="max-h-80 space-y-3 overflow-y-auto rounded-2xl bg-slate-50 p-3">
+                {messages.length === 0 ? (
+                  <p className="text-xs font-medium text-slate-500">Chưa có tin nhắn nào.</p>
+                ) : messages.map((message) => (
+                  <div key={message.id} className={cn("flex", message.senderId === user?.uid ? "justify-end" : "justify-start")}>
+                    <div className={cn(
+                      "max-w-[85%] rounded-2xl px-3 py-2 text-xs font-medium leading-relaxed",
+                      message.senderId === user?.uid ? "bg-blue-600 text-white" : "bg-white text-slate-700 border border-slate-200"
+                    )}>
+                      <div className={cn("mb-1 text-[10px] font-bold", message.senderId === user?.uid ? "text-blue-100" : "text-slate-400")}>{message.senderName || 'Người dùng'}</div>
+                      <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value.slice(0, 2000))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSendMessage();
+                  }}
+                  placeholder="Nhập tin nhắn..."
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                />
+                <button onClick={handleSendMessage} className="rounded-xl bg-blue-600 px-3 text-white">
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="glass-card p-6 rounded-3xl bg-slate-50 border-none">
             <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">{t('confidentialityGuard')}</h4>

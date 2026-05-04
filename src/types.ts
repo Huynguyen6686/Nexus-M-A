@@ -58,6 +58,7 @@ export interface Deal {
   strategy: {
     reasonForSale: string;
     futurePlans: string;
+    idealBuyerProfile?: string;
   };
   aiSummary?: string;
   createdAt: string;
@@ -81,16 +82,24 @@ export interface Offer {
   id: string;
   dealId: string;
   buyerId: string;
+  sellerId?: string;
+  createdBy?: string;
+  type?: 'offer' | 'counter';
+  parentOfferId?: string;
   amount: number;
   equity: number;
-  status: 'pending' | 'countered' | 'accepted' | 'rejected';
+  note?: string;
+  status: 'pending' | 'countered' | 'accepted' | 'rejected' | 'withdrawn';
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Message {
   id: string;
   dealId: string;
   senderId: string;
+  senderName?: string;
+  participantIds?: string[];
   content: string;
   type: 'text' | 'file' | 'offer';
   createdAt: string;

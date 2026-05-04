@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../lib/firebase';
-import { collection, query, where, getDocs, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
-import { Deal } from '../types';
+import { collection, collectionGroup, query, where, getDocs, getDoc, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
+import { Deal, Offer, UserProfile } from '../types';
 import { Building2, TrendingUp, Users, DollarSign, ArrowUpRight, Clock, CheckCircle2, Sparkles, Megaphone, Trash2, X, AlertOctagon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,6 +25,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { t, tSector, language } = useLanguage();
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -55,14 +57,73 @@ export default function Dashboard() {
 
     const fetchDashboardData = async () => {
       try {
-        const dealsQ = query(
-          collection(db, 'deals'),
-          where('sellerId', '==', user.uid),
-          orderBy('createdAt', 'desc'),
-          limit(10)
-        );
-        const dealsSnap = await getDocs(dealsQ);
-        setDeals(dealsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Deal)));
+        const isAdmin = profile?.userType === 'admin';
+        const isSeller = profile?.userType === 'seller';
+        let nextDeals: Deal[] = [];
+        let nextOffers: Offer[] = [];
+
+        if (isAdmin || isSeller) {
+          const dealsQ = isAdmin
+            ? query(collection(db, 'deals'), orderBy('createdAt', 'desc'), limit(50))
+            : query(collection(db, 'deals'), where('sellerId', '==', user.uid), orderBy('createdAt', 'desc'), limit(20));
+            
+          const dealsSnap = await getDocs(dealsQ);
+          nextDeals = dealsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Deal));
+
+          const offerReads = await Promise.all(
+            nextDeals.map(async (deal) => {
+              try {
+                const offersSnap = await getDocs(collection(db, `deals/${deal.id}/offers`));
+                return offersSnap.docs.map(offerDoc => ({ id: offerDoc.id, ...offerDoc.data() } as Offer));
+              } catch (error) {
+                console.warn('Deal offer analytics skipped:', deal.id, error);
+                return [];
+              }
+            })
+          );
+          nextOffers = offerReads.flat();
+        } else {
+          // For buyer / advisor
+          try {
+            const buyerOffersQ = query(collectionGroup(db, 'offers'), where('buyerId', '==', user.uid), limit(50));
+            const buyerOffersSnap = await getDocs(buyerOffersQ);
+            nextOffers = buyerOffersSnap.docs.map(offerDoc => ({ id: offerDoc.id, ...offerDoc.data() } as Offer));
+          } catch (error) {
+            console.warn('Buyer offer analytics skipped:', error);
+          }
+          
+          const dealIds = Array.from(new Set(nextOffers.map(o => o.dealId).filter(Boolean)));
+          if (dealIds.length > 0) {
+            const dealReads = await Promise.all(
+              dealIds.map(async (dealId) => {
+                try {
+                  const docSnap = await getDoc(doc(db, 'deals', dealId));
+                  if (docSnap.exists()) {
+                    return { id: docSnap.id, ...docSnap.data() } as Deal;
+                  }
+                } catch (e) {
+                  console.error('Failed to fetch deal', dealId, e);
+                }
+                return null;
+              })
+            );
+            nextDeals = dealReads.filter((d): d is Deal => d !== null);
+          }
+        }
+
+        setDeals(nextDeals);
+        setOffers(nextOffers);
+
+        if (isAdmin) {
+          try {
+            const usersSnap = await getDocs(query(collection(db, 'users'), limit(200)));
+            setUserCount(usersSnap.docs.map(d => d.data() as UserProfile).length);
+          } catch (error) {
+            console.warn('User analytics skipped:', error);
+          }
+        } else {
+          setUserCount(1);
+        }
       } catch (error) {
         console.error('Dashboard data fetch error:', error);
       } finally {
@@ -71,12 +132,38 @@ export default function Dashboard() {
     };
 
     fetchDashboardData();
-  }, [user]);
+  }, [user, profile?.userType]);
 
   if (loading) return <div className="flex items-center justify-center h-96"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>;
   const lang = language;
   const dealStatusLabel = (status: Deal['status']) => t(statusKeys[status] || String(status));
   const projectPrefix = t('projectLabel');
+  const totalValuation = deals.reduce((sum, deal) => sum + (Number(deal.mandaInfo.valuation) || 0), 0);
+  const publishedCount = deals.filter(deal => deal.status === 'published').length;
+  const pendingCount = deals.filter(deal => ['submitted', 'under_review', 'approved'].includes(deal.status)).length;
+  const acceptedOfferCount = offers.filter(offer => offer.status === 'accepted').length;
+  const totalOfferValue = offers.reduce((sum, offer) => sum + (Number(offer.amount) || 0), 0);
+  const isBuyerLike = profile?.userType === 'buyer' || profile?.userType === 'advisor';
+  const kpis = profile?.userType === 'admin'
+    ? [
+        { label: 'Tổng thương vụ', value: `${deals.length}`, icon: Building2, trend: `${pendingCount} chờ duyệt` },
+        { label: 'Người dùng', value: `${userCount}`, icon: Users, trend: 'Từ Firestore' },
+        { label: 'Tổng giá trị', value: formatCompactNumber(totalValuation, lang), icon: DollarSign, trend: `${publishedCount} đang xuất bản` },
+        { label: 'Offer', value: `${offers.length}`, icon: CheckCircle2, trend: `${acceptedOfferCount} đã chấp nhận` },
+      ]
+    : isBuyerLike
+      ? [
+          { label: 'Offer đã gửi', value: `${offers.length}`, icon: Building2, trend: `${acceptedOfferCount} thành công` },
+          { label: 'Giá trị offer', value: formatCompactNumber(totalOfferValue, lang), icon: DollarSign, trend: 'Từ lịch sử offer' },
+          { label: 'Thương vụ mở', value: `${deals.length}`, icon: Users, trend: `${publishedCount} đang xuất bản` },
+          { label: 'Tỷ lệ phản hồi', value: offers.length ? `${Math.round(((offers.length - offers.filter(o => o.status === 'pending').length) / offers.length) * 100)}%` : '0%', icon: CheckCircle2, trend: 'Theo trạng thái offer' },
+        ]
+      : [
+          { label: 'Thương vụ của tôi', value: `${deals.length}`, icon: Building2, trend: `${publishedCount} đang xuất bản` },
+          { label: 'Offer nhận được', value: `${offers.length}`, icon: Users, trend: `${acceptedOfferCount} đã chấp nhận` },
+          { label: 'Tổng giá trị', value: formatCompactNumber(totalValuation, lang), icon: DollarSign, trend: t('stable') },
+          { label: 'Đang xử lý', value: `${pendingCount}`, icon: CheckCircle2, trend: 'Review/KYC/duyệt' },
+        ];
 
   return (
     <div className="space-y-8">
@@ -108,12 +195,7 @@ export default function Dashboard() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {[
-          { label: t('activePipeline'), value: profile?.userType === 'buyer' ? `12 ${t('deals')}` : `${deals.length} ${t('listings')}`, icon: Building2, trend: `+2 ${t('thisWeek')}` },
-          { label: t('networkReach'), value: '420', icon: Users, trend: `+18% ${t('growthLabel')}` },
-          { label: t('assetValuation'), value: profile?.userType === 'buyer' ? formatCompactNumber(2400000, lang) : formatCompactNumber(12500000, lang), icon: Building2, trend: t('stable') },
-          { label: t('ndaCompletion'), value: '88%', icon: CheckCircle2, trend: t('optimal') },
-        ].map((kpi, i) => (
+        {kpis.map((kpi, i) => (
           <div key={i} className="glass-card min-w-0 p-5 rounded-xl bg-white overflow-hidden">
             <div className="flex justify-between items-start mb-4">
               <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
