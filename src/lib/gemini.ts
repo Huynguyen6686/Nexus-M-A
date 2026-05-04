@@ -1,9 +1,21 @@
 import { GoogleGenAI } from "@google/genai";
 
-export const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const apiKey = process.env.GEMINI_API_KEY;
+
+function getAiClient() {
+  if (!apiKey) {
+    console.warn('GEMINI_API_KEY is not configured. AI features are disabled.');
+    return null;
+  }
+
+  return new GoogleGenAI({ apiKey });
+}
 
 export async function generateDealSummary(dealData: any) {
   try {
+    const ai = getAiClient();
+    if (!ai) return null;
+
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Generate a professional and concise M&A deal summary for the following company:
@@ -23,6 +35,9 @@ export async function generateDealSummary(dealData: any) {
 
 export async function calculateMatchScore(investorProfile: any, dealData: any) {
   try {
+    const ai = getAiClient();
+    if (!ai) return { score: 0, explanation: 'Scoring unavailable' };
+
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Evaluate the match between this investor and deal.
