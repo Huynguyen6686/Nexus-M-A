@@ -214,14 +214,6 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Deal Management Section */}
         <div className="lg:col-span-2 space-y-4">
-            <div className="metric-label mt-1">{kpi.label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Deal Management Section */}
-        <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-slate-800">{t('portfolioLifecycle')}</h2>
             <Link to="/" className="text-xs text-blue-600 font-semibold hover:underline">{t('marketplace')} →</Link>
