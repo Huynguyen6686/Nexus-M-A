@@ -37,7 +37,6 @@ export default function Profile() {
     const updatedProfile = {
       ...profile,
       displayName,
-      userType: role,
       country,
       updatedAt: new Date().toISOString(),
     };
@@ -45,7 +44,6 @@ export default function Profile() {
     try {
       await updateDoc(doc(db, 'users', user.uid), {
         displayName,
-        userType: role,
         country,
         updatedAt: new Date().toISOString(),
       });
@@ -152,15 +150,13 @@ export default function Profile() {
                     { id: 'seller', label: t('ownerPrincipal'), icon: Building },
                     { id: 'advisor', label: t('strategicAdvisor'), icon: ShieldCheck },
                   ].map((item) => (
-                    <button
+                    <div
                       key={item.id}
-                      type="button"
-                      onClick={() => setRole(item.id as UserRole)}
                       className={cn(
                         "flex items-center gap-4 p-4 rounded-2xl border-2 transition-all text-left",
                         role === item.id 
                         ? "border-blue-600 bg-blue-50/50" 
-                        : "border-slate-50 hover:border-slate-200 bg-white"
+                        : "border-slate-50 bg-white opacity-60"
                       )}
                     >
                       <div className={cn(
@@ -170,9 +166,10 @@ export default function Profile() {
                         <item.icon className="w-5 h-5" />
                       </div>
                       <span className="font-bold text-slate-900">{item.label}</span>
-                    </button>
+                    </div>
                   ))}
                 </div>
+                <p className="text-xs font-medium text-slate-500">Vai trò được quản lý bởi admin để đảm bảo phân quyền rõ ràng.</p>
               </div>
 
               <div className="space-y-3">

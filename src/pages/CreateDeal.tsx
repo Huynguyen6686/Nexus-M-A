@@ -10,8 +10,26 @@ import { generateDealSummary } from '../lib/gemini';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 
+const LIMITS = {
+  title: 80,
+  legalName: 100,
+  taxId: 30,
+  products: 160,
+  targetMarket: 120,
+  thesis: 600,
+  moneyDigits: 12,
+  percent: 100,
+  employeeCount: 1000000,
+  minYear: 1900,
+};
+
+const clampNumber = (value: number, min: number, max: number) => {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+};
+
 export default function CreateDeal() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -63,6 +81,9 @@ export default function CreateDeal() {
       else if (Number(formData.valuation) <= 0) newErrors.valuation = t('invalidAmount');
       
       if (!formData.equityOffered) newErrors.equityOffered = t('fieldRequired');
+      else if (Number(formData.equityOffered) > LIMITS.percent) newErrors.equityOffered = t('invalidAmount');
+
+      if (Number(formData.growthRate) > LIMITS.percent) newErrors.growthRate = t('invalidAmount');
     }
 
     if (currentStep === 3) {
@@ -84,20 +105,58 @@ export default function CreateDeal() {
 
   const formatInputNumber = (value: string) => {
     if (!value) return '';
-    const numericValue = value.replace(/\D/g, '');
+    const numericValue = value.replace(/\D/g, '').slice(0, LIMITS.moneyDigits);
     if (!numericValue) return '';
     
-    const locale = t('language') === 'vi' ? 'vi-VN' : 'en-US';
+    const locale = language === 'vi' ? 'vi-VN' : 'en-US';
     return new Intl.NumberFormat(locale).format(Number(numericValue));
   };
 
   const parseCurrencyInput = (formattedValue: string) => {
-    return formattedValue.replace(/\D/g, '');
+    return formattedValue.replace(/\D/g, '').slice(0, LIMITS.moneyDigits);
+  };
+
+  const sanitizeField = (name: string, value: string) => {
+    const currentYear = new Date().getFullYear();
+
+    if (['title'].includes(name)) return value.slice(0, LIMITS.title);
+    if (['legalName'].includes(name)) return value.slice(0, LIMITS.legalName);
+    if (['taxId'].includes(name)) return value.slice(0, LIMITS.taxId);
+    if (['products'].includes(name)) return value.slice(0, LIMITS.products);
+    if (['targetMarket'].includes(name)) return value.slice(0, LIMITS.targetMarket);
+    if (['reasonForSale', 'futurePlans'].includes(name)) return value.slice(0, LIMITS.thesis);
+
+    if (['equityOffered', 'founderPct', 'investorPct', 'esopPct'].includes(name)) {
+      const numeric = value.replace(/\D/g, '').slice(0, 3);
+      if (!numeric) return '';
+      return String(clampNumber(Number(numeric), 0, LIMITS.percent));
+    }
+
+    if (name === 'growthRate') {
+      const numeric = value.replace(/\D/g, '').slice(0, 3);
+      if (!numeric) return '';
+      return String(clampNumber(Number(numeric), 0, LIMITS.percent));
+    }
+
+    if (name === 'employeeCount') {
+      const numeric = value.replace(/\D/g, '').slice(0, 7);
+      if (!numeric) return '';
+      return String(clampNumber(Number(numeric), 1, LIMITS.employeeCount));
+    }
+
+    if (name === 'foundedYear') {
+      const numeric = value.replace(/\D/g, '').slice(0, 4);
+      if (!numeric) return '';
+      if (numeric.length < 4) return numeric;
+      return String(clampNumber(Number(numeric), LIMITS.minYear, currentYear));
+    }
+
+    return value;
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name]: sanitizeField(name, value) }));
     
     if (errors[name]) {
       setErrors(prev => {
@@ -139,18 +198,24 @@ export default function CreateDeal() {
   };
 
   const handleGenerateAI = async () => {
-    if (!formData.title || !formData.reasonForSale) return;
+    if (!validateStep(3)) return;
     setAiGenerating(true);
-    const summary = await generateDealSummary({
-      title: formData.title,
-      industry: formData.industry,
-      financials: { revenue: formData.revenue.map(Number) },
-      strategy: { reasonForSale: formData.reasonForSale }
-    });
-    if (summary) {
-      setFormData(prev => ({ ...prev, aiSummary: summary }));
+    try {
+      const summary = await generateDealSummary({
+        title: formData.title,
+        industry: formData.industry,
+        financials: { revenue: formData.revenue.map(Number) },
+        strategy: {
+          reasonForSale: formData.reasonForSale,
+          futurePlans: formData.futurePlans,
+        },
+      });
+      if (summary) {
+        setFormData(prev => ({ ...prev, aiSummary: summary }));
+      }
+    } finally {
+      setAiGenerating(false);
     }
-    setAiGenerating(false);
   };
 
   const handleSubmit = async () => {
@@ -169,9 +234,9 @@ export default function CreateDeal() {
         products: formData.products,
         targetMarket: formData.targetMarket,
         ownershipStructure: { 
-          founderPct: Number(formData.founderPct), 
-          investorPct: Number(formData.investorPct), 
-          esopPct: Number(formData.esopPct) 
+          founderPct: clampNumber(Number(formData.founderPct), 0, LIMITS.percent),
+          investorPct: clampNumber(Number(formData.investorPct), 0, LIMITS.percent),
+          esopPct: clampNumber(Number(formData.esopPct), 0, LIMITS.percent),
         },
         createdAt: new Date().toISOString(),
       };
@@ -186,18 +251,18 @@ export default function CreateDeal() {
         industry: formData.industry,
         location: formData.location,
         dealType: formData.dealType,
-        status: 'published',
+        status: 'submitted',
         financials: {
-          revenue: formData.revenue.map(Number),
-          ebitda: Number(formData.ebitda),
-          netProfit: Number(formData.netProfit),
-          growthRate: Number(formData.growthRate),
+          revenue: formData.revenue.map(rev => clampNumber(Number(rev), 0, 999999999999)),
+          ebitda: clampNumber(Number(formData.ebitda), 0, 999999999999),
+          netProfit: clampNumber(Number(formData.netProfit), 0, 999999999999),
+          growthRate: clampNumber(Number(formData.growthRate), 0, LIMITS.percent),
         },
         mandaInfo: {
-          valuation: Number(formData.valuation),
-          equityOffered: Number(formData.equityOffered),
-          employeeCount: parseInt(formData.employeeCount),
-          foundedYear: parseInt(formData.foundedYear),
+          valuation: clampNumber(Number(formData.valuation), 1, 999999999999),
+          equityOffered: clampNumber(Number(formData.equityOffered), 0, LIMITS.percent),
+          employeeCount: clampNumber(parseInt(formData.employeeCount), 1, LIMITS.employeeCount),
+          foundedYear: clampNumber(parseInt(formData.foundedYear), LIMITS.minYear, new Date().getFullYear()),
         },
         strategy: {
           reasonForSale: formData.reasonForSale,
@@ -283,6 +348,7 @@ export default function CreateDeal() {
                         name="title" 
                         value={formData.title} 
                         onChange={handleChange} 
+                        maxLength={LIMITS.title}
                         className={cn(
                           "professional-input text-lg",
                           errors.title && "border-rose-500 bg-rose-50/10 focus:ring-rose-500"
@@ -348,6 +414,7 @@ export default function CreateDeal() {
                           name="legalName" 
                           value={formData.legalName} 
                           onChange={handleChange} 
+                          maxLength={LIMITS.legalName}
                           className={cn(
                             "professional-input",
                             errors.legalName && "border-rose-500 bg-rose-50/10 focus:ring-rose-500"
@@ -362,6 +429,7 @@ export default function CreateDeal() {
                           name="taxId" 
                           value={formData.taxId} 
                           onChange={handleChange} 
+                          maxLength={LIMITS.taxId}
                           className={cn(
                             "professional-input",
                             errors.taxId && "border-rose-500 bg-rose-50/10 focus:ring-rose-500"
@@ -375,31 +443,31 @@ export default function CreateDeal() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="space-y-4">
                         <label className="metric-label">{t('foundedYear')}</label>
-                        <input name="foundedYear" type="number" value={formData.foundedYear} onChange={handleChange} className="professional-input" />
+                        <input name="foundedYear" type="number" min={LIMITS.minYear} max={new Date().getFullYear()} value={formData.foundedYear} onChange={handleChange} className="professional-input" />
                       </div>
                       <div className="space-y-4 md:col-span-2">
                         <label className="metric-label">{t('productsServices')}</label>
-                        <input name="products" value={formData.products} onChange={handleChange} className="professional-input" />
+                        <input name="products" value={formData.products} onChange={handleChange} maxLength={LIMITS.products} className="professional-input" />
                       </div>
                     </div>
                     
                     <div className="space-y-4">
                       <label className="metric-label">{t('targetMarket')}</label>
-                      <input name="targetMarket" value={formData.targetMarket} onChange={handleChange} className="professional-input" />
+                      <input name="targetMarket" value={formData.targetMarket} onChange={handleChange} maxLength={LIMITS.targetMarket} className="professional-input" />
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-4">
                         <label className="metric-label">{t('founderEquity')}</label>
-                        <input name="founderPct" type="number" value={formData.founderPct} onChange={handleChange} className="professional-input" />
+                        <input name="founderPct" type="number" min="0" max={LIMITS.percent} value={formData.founderPct} onChange={handleChange} className="professional-input" />
                       </div>
                       <div className="space-y-4">
                         <label className="metric-label">{t('investorEquity')}</label>
-                        <input name="investorPct" type="number" value={formData.investorPct} onChange={handleChange} className="professional-input" />
+                        <input name="investorPct" type="number" min="0" max={LIMITS.percent} value={formData.investorPct} onChange={handleChange} className="professional-input" />
                       </div>
                       <div className="space-y-4">
                         <label className="metric-label">{t('esopEquity')}</label>
-                        <input name="esopPct" type="number" value={formData.esopPct} onChange={handleChange} className="professional-input" />
+                        <input name="esopPct" type="number" min="0" max={LIMITS.percent} value={formData.esopPct} onChange={handleChange} className="professional-input" />
                       </div>
                     </div>
 
@@ -435,21 +503,23 @@ export default function CreateDeal() {
                       <div className="grid grid-cols-3 gap-4">
                         {formData.revenue.map((rev, i) => (
                           <div key={i} className="relative">
-                            {t('language') === 'en' && (
+                            {language === 'en' && (
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 font-mono italic">$</span>
                             )}
                             <input
                               type="text"
                               value={formatInputNumber(rev)}
                               onChange={(e) => handleRevenueCurrencyChange(i, e.target.value)}
+                              inputMode="numeric"
+                              maxLength={16}
                               className={cn(
                                 "professional-input",
-                                t('language') === 'en' ? "pl-9" : "pr-9",
+                                language === 'en' ? "pl-9" : "pr-9",
                                 errors.revenue && "border-rose-500 bg-rose-50/10 focus:ring-rose-500"
                               )}
                               placeholder={`${t('yearLabel')} ${i + 1}`}
                             />
-                            {t('language') === 'vi' && (
+                            {language === 'vi' && (
                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 font-mono italic">₫</span>
                             )}
                           </div>
@@ -462,7 +532,7 @@ export default function CreateDeal() {
                       <div className="space-y-4">
                         <label className="metric-label">{t('targetValuation')}</label>
                         <div className="relative">
-                          {t('language') === 'en' && (
+                          {language === 'en' && (
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 font-mono italic">$</span>
                           )}
                           <input 
@@ -470,14 +540,16 @@ export default function CreateDeal() {
                             value={formatInputNumber(formData.valuation)} 
                             onChange={handleCurrencyChange} 
                             type="text" 
+                            inputMode="numeric"
+                            maxLength={16}
                             className={cn(
                                 "professional-input text-blue-600 font-bold",
-                                t('language') === 'en' ? "pl-9" : "pr-9",
+                                language === 'en' ? "pl-9" : "pr-9",
                                 errors.valuation && "border-rose-500 bg-rose-50/10 focus:ring-rose-500"
                             )} 
                             placeholder={t('expectedValue')} 
                           />
-                          {t('language') === 'vi' && (
+                          {language === 'vi' && (
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500">₫</span>
                           )}
                         </div>
@@ -485,7 +557,7 @@ export default function CreateDeal() {
                       </div>
                       <div className="space-y-4">
                         <label className="metric-label">{t('equityHandover')}</label>
-                        <input name="equityOffered" value={formData.equityOffered} onChange={handleChange} type="number" className="professional-input" />
+                        <input name="equityOffered" value={formData.equityOffered} onChange={handleChange} type="number" min="0" max={LIMITS.percent} className="professional-input" />
                       </div>
                     </div>
 
@@ -493,7 +565,7 @@ export default function CreateDeal() {
                       <div className="space-y-4">
                         <label className="metric-label">{t('adjustedEbitda')}</label>
                         <div className="relative">
-                          {t('language') === 'en' && (
+                          {language === 'en' && (
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 font-mono italic">$</span>
                           )}
                           <input 
@@ -501,12 +573,14 @@ export default function CreateDeal() {
                             value={formatInputNumber(formData.ebitda)} 
                             onChange={handleCurrencyChange} 
                             type="text" 
+                            inputMode="numeric"
+                            maxLength={16}
                             className={cn(
                                 "professional-input",
-                                t('language') === 'en' ? "pl-9" : "pr-9"
+                                language === 'en' ? "pl-9" : "pr-9"
                             )} 
                           />
-                          {t('language') === 'vi' && (
+                          {language === 'vi' && (
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500">₫</span>
                           )}
                         </div>
@@ -514,7 +588,7 @@ export default function CreateDeal() {
                       <div className="space-y-4">
                         <label className="metric-label">{t('netProfit')}</label>
                         <div className="relative">
-                          {t('language') === 'en' && (
+                          {language === 'en' && (
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 font-mono italic">$</span>
                           )}
                           <input 
@@ -522,12 +596,14 @@ export default function CreateDeal() {
                             value={formatInputNumber(formData.netProfit)} 
                             onChange={handleCurrencyChange} 
                             type="text" 
+                            inputMode="numeric"
+                            maxLength={16}
                             className={cn(
                                 "professional-input",
-                                t('language') === 'en' ? "pl-9" : "pr-9"
+                                language === 'en' ? "pl-9" : "pr-9"
                             )} 
                           />
-                          {t('language') === 'vi' && (
+                          {language === 'vi' && (
                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500">₫</span>
                           )}
                         </div>
@@ -537,11 +613,12 @@ export default function CreateDeal() {
                     <div className="grid grid-cols-2 gap-6">
                       <div className="space-y-4">
                         <label className="metric-label">{t('staffCount')}</label>
-                        <input name="employeeCount" value={formData.employeeCount} onChange={handleChange} type="number" className="professional-input" />
+                        <input name="employeeCount" value={formData.employeeCount} onChange={handleChange} type="number" min="1" max={LIMITS.employeeCount} className="professional-input" />
                       </div>
                       <div className="space-y-4">
                         <label className="metric-label">{t('growthRate')}</label>
-                        <input name="growthRate" value={formData.growthRate} onChange={handleChange} type="number" className="professional-input" />
+                        <input name="growthRate" value={formData.growthRate} onChange={handleChange} type="number" min="0" max={LIMITS.percent} className={cn("professional-input", errors.growthRate && "border-rose-500 bg-rose-50/10 focus:ring-rose-500")} />
+                        {errors.growthRate && <p className="text-[10px] text-rose-500 font-bold uppercase tracking-wider">{errors.growthRate}</p>}
                       </div>
                     </div>
                   </div>
@@ -555,6 +632,7 @@ export default function CreateDeal() {
                         name="reasonForSale" 
                         value={formData.reasonForSale} 
                         onChange={handleChange} 
+                        maxLength={LIMITS.thesis}
                         className={cn(
                             "professional-input h-32 resize-none",
                             errors.reasonForSale && "border-rose-500 bg-rose-50/10 focus:ring-rose-500"
@@ -569,6 +647,7 @@ export default function CreateDeal() {
                         name="futurePlans" 
                         value={formData.futurePlans} 
                         onChange={handleChange} 
+                        maxLength={LIMITS.thesis}
                         className={cn(
                             "professional-input h-32 resize-none",
                             errors.futurePlans && "border-rose-500 bg-rose-50/10 focus:ring-rose-500"
@@ -591,10 +670,11 @@ export default function CreateDeal() {
                         {formData.aiSummary ? (
                           <div className="space-y-4">
                             <p className="text-slate-200 font-medium italic leading-relaxed">"{formData.aiSummary}"</p>
-                            <button onClick={handleGenerateAI} className="text-[10px] font-bold text-blue-400 hover:underline uppercase tracking-widest">{t('regenerateAnalysis')}</button>
+                            <button type="button" onClick={handleGenerateAI} disabled={aiGenerating} className="text-[10px] font-bold text-blue-400 hover:underline uppercase tracking-widest disabled:opacity-60">{t('regenerateAnalysis')}</button>
                           </div>
                         ) : (
                           <button
+                            type="button"
                             onClick={handleGenerateAI}
                             disabled={aiGenerating}
                             className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-blue-700 transition-all shadow-xl shadow-blue-600/20"

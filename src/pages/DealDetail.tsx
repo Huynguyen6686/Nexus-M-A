@@ -14,7 +14,7 @@ import { formatCompactNumber, formatCurrency, cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function DealDetail() {
-  const { t, tSector } = useLanguage();
+  const { t, tSector, language } = useLanguage();
   const { id } = useParams();
   const { user, profile } = useAuth();
   const navigate = useNavigate();
@@ -74,63 +74,72 @@ export default function DealDetail() {
   if (loading) return <div className="flex items-center justify-center h-screen"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>;
   if (!deal) return null;
 
+  const lang = language;
+  const latestRevenue = deal.financials.revenue[deal.financials.revenue.length - 1] || 0;
+  const growthRate = Math.min(100, Math.max(0, Number(deal.financials.growthRate) || 0));
+  const equityOffered = Math.min(100, Math.max(0, Number(deal.mandaInfo.equityOffered) || 0));
+  const ebitdaMargin = Math.min(100, Math.max(0, latestRevenue > 0 ? (deal.financials.ebitda / latestRevenue * 100) : 0)).toFixed(1);
+  const canInvest = profile?.userType === 'buyer' || profile?.userType === 'advisor' || profile?.userType === 'admin';
+
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-24">
       {/* breadcrumbs */}
-      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
-        <Link to="/" className="hover:text-blue-600 transition-colors">{t('marketplace')}</Link>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
+        <Link to="/" className="shrink-0 hover:text-blue-600 transition-colors">{t('marketplace')}</Link>
         <ChevronRight className="w-3 h-3" />
-        <span className="text-slate-900">{tSector(deal.industry)}</span>
+        <span className="shrink-0 text-slate-900">{tSector(deal.industry)}</span>
         <ChevronRight className="w-3 h-3" />
-        <span className="text-slate-900">{deal.title}</span>
+        <span className="min-w-0 max-w-full truncate text-slate-900">{deal.title}</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-8">
           {/* Header Card */}
-          <div className="glass-card p-8 rounded-3xl bg-white border border-slate-200">
-            <div className="flex justify-between items-start mb-6">
-              <div className="space-y-4">
+          <div className="glass-card overflow-hidden p-8 rounded-3xl bg-white border border-slate-200">
+            <div className="flex flex-col gap-6 xl:flex-row xl:justify-between xl:items-start mb-6">
+              <div className="min-w-0 space-y-4">
                 <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-blue-100">
                   <ShieldCheck className="w-3 h-3" /> {t('verifiedListing')}
                 </div>
-                <h1 className="text-3xl md:text-4xl font-bold text-slate-900 leading-tight tracking-tight">
+                <h1 className="max-w-full break-words text-3xl md:text-4xl font-bold text-slate-900 leading-tight tracking-tight [overflow-wrap:anywhere]">
                   {deal.title}
                 </h1>
-                <div className="flex flex-wrap items-center gap-6 text-sm text-slate-500 font-medium">
+                <div className="flex min-w-0 flex-wrap items-center gap-6 text-sm text-slate-500 font-medium">
                   <span className="flex items-center gap-2"><MapPin className="w-4 h-4 text-slate-400" /> {deal.location}</span>
                   <span className="flex items-center gap-2"><Building2 className="w-4 h-4 text-slate-400" /> {tSector(deal.industry)}</span>
                   <span className="flex items-center gap-2"><Calendar className="w-4 h-4 text-slate-400" /> {t('founded')} {deal.mandaInfo.foundedYear}</span>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="min-w-0 max-w-full xl:max-w-[260px] xl:text-right">
                 <div className="metric-label">{t('askingPrice')}</div>
-                <div className="text-3xl font-bold text-slate-900">{formatCurrency(deal.mandaInfo.valuation, t('language') as 'en'|'vi')}</div>
-                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">{deal.mandaInfo.equityOffered}{t('equityOfferedLabel')}</div>
+                <div className="truncate text-3xl font-bold text-slate-900" title={formatCurrency(deal.mandaInfo.valuation, lang)}>
+                  {formatCompactNumber(deal.mandaInfo.valuation, lang)}
+                </div>
+                <div className="truncate text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">{equityOffered}{t('equityOfferedLabel')}</div>
               </div>
             </div>
 
             {/* Quick Metrics */}
-            <div className="grid grid-cols-3 gap-6 py-8 border-y border-slate-50 mt-8">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 py-8 border-y border-slate-50 mt-8">
+              <div className="min-w-0">
                 <div className="metric-label mb-1">{t('annualRevenue')}</div>
-                <div className="text-xl font-bold text-slate-900">{formatCurrency(deal.financials.revenue[deal.financials.revenue.length-1], t('language') as 'en'|'vi')}</div>
-                <div className="text-[10px] text-green-600 font-bold mt-1">+{deal.financials.growthRate}% {t('growthLabel')}</div>
+                <div className="truncate text-xl font-bold text-slate-900" title={formatCurrency(latestRevenue, lang)}>{formatCompactNumber(latestRevenue, lang)}</div>
+                <div className="truncate text-[10px] text-green-600 font-bold mt-1">+{growthRate}% {t('growthLabel')}</div>
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="metric-label mb-1">{t('adjustedEbitda')}</div>
-                <div className="text-xl font-bold text-slate-900">{formatCurrency(deal.financials.ebitda, t('language') as 'en'|'vi')}</div>
-                <div className="text-[10px] text-slate-400 font-bold mt-1">{(deal.financials.ebitda / deal.financials.revenue[deal.financials.revenue.length-1] * 100).toFixed(1)}% {t('margin')}</div>
+                <div className="truncate text-xl font-bold text-slate-900" title={formatCurrency(deal.financials.ebitda, lang)}>{formatCompactNumber(deal.financials.ebitda, lang)}</div>
+                <div className="truncate text-[10px] text-slate-400 font-bold mt-1">{ebitdaMargin}% {t('margin')}</div>
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="metric-label mb-1">{t('staffCount')}</div>
-                <div className="text-xl font-bold text-slate-900">{deal.mandaInfo.employeeCount}</div>
+                <div className="truncate text-xl font-bold text-slate-900">{formatCompactNumber(deal.mandaInfo.employeeCount || 0, lang)}</div>
                 <div className="text-[10px] text-slate-400 font-bold mt-1">{t('fullTimeStaff')}</div>
               </div>
             </div>
 
-            <div className="flex items-center gap-6 mt-8">
+            <div className="flex min-w-0 flex-col gap-4 mt-8 sm:flex-row sm:items-center sm:gap-6">
               <div className="flex -space-x-3">
                 {[1, 2, 3, 4].map(i => (
                   <div key={i} className="w-9 h-9 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-400 uppercase">
@@ -138,7 +147,7 @@ export default function DealDetail() {
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="min-w-0 text-xs text-slate-500 font-medium leading-relaxed">
                 <strong className="text-slate-900">14 {t('verifiedInvestors')}</strong> {t('verifiedBuyersRequested')}
               </p>
             </div>
@@ -176,13 +185,13 @@ export default function DealDetail() {
                 >
                   <div className="prose prose-slate max-w-none">
                     <h3 className="text-lg font-bold text-slate-900">{t('executiveSummary')}</h3>
-                    <p className="text-slate-600 leading-relaxed text-sm whitespace-pre-wrap">{deal.strategy.reasonForSale}</p>
+                    <p className="text-slate-600 leading-relaxed text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{deal.strategy.reasonForSale}</p>
                     
                     <h3 className="text-lg font-bold text-slate-900 mt-8">{t('growthRoadmap')}</h3>
-                    <p className="text-slate-600 leading-relaxed text-sm whitespace-pre-wrap">{deal.strategy.futurePlans}</p>
+                    <p className="text-slate-600 leading-relaxed text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{deal.strategy.futurePlans}</p>
 
                     <h3 className="text-lg font-bold text-slate-900 mt-8">{t('idealBuyerProfile')}</h3>
-                    <p className="text-slate-600 leading-relaxed text-sm whitespace-pre-wrap">{deal.strategy.idealBuyerProfile}</p>
+                    <p className="text-slate-600 leading-relaxed text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{deal.strategy.idealBuyerProfile}</p>
                   </div>
                 </motion.div>
               )}
@@ -204,7 +213,7 @@ export default function DealDetail() {
                             style={{ height: `${(val / Math.max(...deal.financials.revenue)) * 100}%` }}
                           />
                           <span className="text-[10px] font-bold text-slate-400">FY{22+i}</span>
-                          <span className="text-xs font-bold text-slate-900">{formatCurrency(val, t('language') as 'en'|'vi')}</span>
+                          <span className="max-w-full truncate text-xs font-bold text-slate-900" title={formatCurrency(val, lang)}>{formatCompactNumber(val, lang)}</span>
                         </div>
                       ))}
                     </div>
@@ -259,20 +268,21 @@ export default function DealDetail() {
 
         {/* Right Column: Sidebar Actions */}
         <div className="space-y-6">
-          <div className="glass-card p-6 rounded-3xl bg-white border-2 border-blue-600 shadow-xl shadow-blue-600/5">
-            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t('operational')}: Active</div>
+          <div className="glass-card overflow-hidden p-6 rounded-3xl bg-white border-2 border-blue-600 shadow-xl shadow-blue-600/5">
+            <div className="truncate text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{t('operational')}: {t('activeStatus')}</div>
             <h3 className="text-lg font-bold text-slate-900 mb-6">{t('investmentActions')}</h3>
             
             <div className="space-y-4">
               <button 
                 onClick={handleSendOffer}
-                disabled={offerLoading || offerSent}
+                disabled={offerLoading || offerSent || !canInvest}
                 className={cn(
                   "w-full professional-btn py-3 text-sm tracking-widest uppercase",
+                  !canInvest && "cursor-not-allowed bg-slate-300 hover:bg-slate-300",
                   offerSent && "bg-green-600 hover:bg-green-700"
                 )}
               >
-                {offerLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : offerSent ? t('offerSentBtn') : t('submitOfferBtn')}
+                {offerLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : offerSent ? t('offerSentBtn') : canInvest ? t('submitOfferBtn') : t('onlyBuyerAdvisor')}
               </button>
               
               {!ndaSigned ? (
@@ -298,9 +308,9 @@ export default function DealDetail() {
                 <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-400">
                   {profile?.displayName?.charAt(0) || 'JD'}
                 </div>
-                <div>
-                  <div className="text-sm font-bold text-slate-900">Jonathan Davies</div>
-                  <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider leading-none mt-0.5">{t('principalAdvisor')}</div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold text-slate-900">Jonathan Davies</div>
+                  <div className="truncate text-[10px] font-medium text-slate-500 uppercase tracking-wider leading-none mt-0.5">{t('principalAdvisor')}</div>
                 </div>
               </div>
             </div>

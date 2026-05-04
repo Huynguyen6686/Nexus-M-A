@@ -1,7 +1,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
+import {
+  AUTH_SESSION_DURATION_MS,
+  auth,
+  clearAuthSession,
+  db,
+  getAuthSessionStartedAt,
+  handleFirestoreError,
+  markAuthSessionStarted,
+  OperationType,
+} from '../lib/firebase';
 import { UserProfile } from '../types';
 
 interface AuthContextType {
@@ -25,8 +34,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
       if (user) {
+        let startedAt = getAuthSessionStartedAt();
+        if (!startedAt) {
+          markAuthSessionStarted();
+          startedAt = getAuthSessionStartedAt();
+        }
+
+        if (Date.now() - startedAt >= AUTH_SESSION_DURATION_MS) {
+          clearAuthSession();
+          await auth.signOut();
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+
+        setUser(user);
         try {
           const docRef = doc(db, 'users', user.uid);
           const docSnap = await getDoc(docRef);
@@ -39,6 +63,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
         }
       } else {
+        clearAuthSession();
+        setUser(null);
         setProfile(null);
       }
       setLoading(false);
@@ -46,6 +72,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const startedAt = getAuthSessionStartedAt();
+    const remainingMs = startedAt + AUTH_SESSION_DURATION_MS - Date.now();
+
+    if (remainingMs <= 0) {
+      clearAuthSession();
+      auth.signOut();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      clearAuthSession();
+      auth.signOut();
+    }, remainingMs);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [user]);
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, setProfile }}>

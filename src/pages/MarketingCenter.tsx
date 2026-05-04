@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Type, Image as ImageIcon, Link as LinkIcon, Send, 
@@ -42,14 +42,27 @@ function ShieldCheck(props: any) {
 }
 
 export default function MarketingCenter() {
-  const { t, tSector } = useLanguage();
+  const { language, t, tSector } = useLanguage();
   const [selectedTemplate, setSelectedTemplate] = useState<BannerTemplate>(TEMPLATES[0]);
   const [industryFilter, setIndustryFilter] = useState<Industry | 'All'>('All');
   const [purposeFilter, setPurposeFilter] = useState<Purpose | 'All'>('All');
   
-  const [customText, setCustomText] = useState('Strategic Acquisition Opportunity: High-Growth SaaS in SE Asia');
+  const defaultHeadline = language === 'vi'
+    ? 'Cơ hội mua lại chiến lược: SaaS tăng trưởng cao tại Đông Nam Á'
+    : 'Strategic Acquisition Opportunity: High-Growth SaaS in SE Asia';
+  const [customText, setCustomText] = useState(defaultHeadline);
   const [customUrl, setCustomUrl] = useState('nexus.ma/deals/sf-tech');
   const [isExporting, setIsExporting] = useState(false);
+
+  useEffect(() => {
+    setCustomText(current => {
+      const oldDefaults = [
+        'Strategic Acquisition Opportunity: High-Growth SaaS in SE Asia',
+        'Cơ hội mua lại chiến lược: SaaS tăng trưởng cao tại Đông Nam Á',
+      ];
+      return oldDefaults.includes(current) ? defaultHeadline : current;
+    });
+  }, [defaultHeadline]);
 
   const filteredTemplates = TEMPLATES.filter(t => 
     (industryFilter === 'All' || t.industry === industryFilter) &&
@@ -138,7 +151,7 @@ export default function MarketingCenter() {
                     </div>
                     <div>
                       <div className="font-bold text-slate-900 text-sm">{template.name}</div>
-                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{template.industry} • {template.style}</div>
+                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{tSector(template.industry)} • {template.style}</div>
                     </div>
                   </div>
                   {selectedTemplate.id === template.id && (
@@ -213,7 +226,7 @@ export default function MarketingCenter() {
               </div>
 
               <div className="relative z-10 pt-4 border-t border-white/10 flex justify-between items-center text-[8px] font-bold text-white/30 uppercase tracking-[0.3em]">
-                <span>{t('verified')} Asset Index</span>
+                <span>{t('verified')} {t('assetIndex')}</span>
                 <span>© 2026 Nexus Capital</span>
               </div>
             </motion.div>

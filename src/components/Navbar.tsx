@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { auth, signInWithGoogle } from '../lib/firebase';
-import { LogOut, LayoutDashboard, User } from 'lucide-react';
+import { LogOut, LayoutDashboard, ShieldCheck, User } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 
 const VietnamFlag = () => (
@@ -21,7 +21,7 @@ const USAFlag = () => (
 );
 
 export default function Navbar() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const { language, setLanguage, t } = useLanguage();
 
@@ -79,19 +79,27 @@ export default function Navbar() {
 
             {user ? (
               <>
-                <Link 
-                  to="/deals/new" 
-                  className="professional-btn h-9 px-6 text-xs whitespace-nowrap flex items-center justify-center shrink-0"
-                  id="btn-create-deal"
-                >
-                  {t('listDeal')}
-                </Link>
+                {(profile?.userType === 'seller' || profile?.userType === 'admin') && (
+                  <Link
+                    to="/deals/new"
+                    className="professional-btn h-9 px-6 text-xs whitespace-nowrap flex items-center justify-center shrink-0"
+                    id="btn-create-deal"
+                  >
+                    {t('listDeal')}
+                  </Link>
+                )}
                 
                 <div className="h-6 w-[1px] bg-slate-200 mx-1" />
                 
                 <Link to="/dashboard" className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Dashboard">
                   <LayoutDashboard className="w-4 h-4" />
                 </Link>
+
+                {profile?.userType === 'admin' && (
+                  <Link to="/admin" className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Admin">
+                    <ShieldCheck className="w-4 h-4" />
+                  </Link>
+                )}
                 
                 <Link to="/profile" className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden border border-slate-200">

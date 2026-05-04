@@ -105,6 +105,52 @@ export const translations: Translations = {
   hourShort: { en: 'h', vi: 'giờ' },
   yesterday: { en: 'Yesterday', vi: 'Hôm qua' },
 
+  // Admin
+  adminNav: { en: 'Admin', vi: 'Quản trị' },
+  adminControlCenter: { en: 'Admin control center', vi: 'Trung tâm quản trị' },
+  adminTitle: { en: 'Nexus M&A administration', vi: 'Quản trị Nexus M&A' },
+  adminDesc: { en: 'Review deals, manage user roles, and verify KYC.', vi: 'Duyệt thương vụ, phân quyền người dùng và kiểm tra KYC.' },
+  pendingReview: { en: 'Pending review', vi: 'Chờ duyệt' },
+  userCount: { en: 'Users', vi: 'Người dùng' },
+  kycQueue: { en: 'KYC queue', vi: 'KYC cần xử lý' },
+  reviewDealsTab: { en: 'Review deals', vi: 'Duyệt thương vụ' },
+  manageUsersTab: { en: 'Manage users', vi: 'Quản lý người dùng' },
+  verifyKycTab: { en: 'Verify KYC', vi: 'Kiểm tra KYC' },
+  noDealsTitle: { en: 'No deals found', vi: 'Chưa có thương vụ nào' },
+  noDealsDesc: { en: 'If the marketplace has data, check Firestore rules for admin list access.', vi: 'Nếu thị trường đang có dữ liệu, hãy kiểm tra Firestore rules cho quyền xem danh sách của admin.' },
+  noUsersTitle: { en: 'No users found', vi: 'Chưa tải được người dùng' },
+  noUsersDesc: { en: 'Make sure Firestore rules allow admin users to list the users collection.', vi: 'Hãy đảm bảo Firestore rules cho phép admin xem danh sách người dùng.' },
+  noKycTitle: { en: 'No KYC profiles need review', vi: 'Không có hồ sơ KYC cần xử lý' },
+  adminLoadError: { en: 'Admin data could not be loaded. Firestore rules may not be published or the current account may not be an admin in Firestore.', vi: 'Không tải được dữ liệu admin. Khả năng cao là Firestore rules chưa được publish hoặc tài khoản hiện tại chưa phải admin trong Firestore.' },
+  sellerLabel: { en: 'Seller', vi: 'Người bán' },
+  roleLabel: { en: 'Role', vi: 'Vai trò' },
+  countryLabel: { en: 'Country', vi: 'Quốc gia' },
+  verify: { en: 'Verify', vi: 'Xác minh' },
+  reject: { en: 'Reject', vi: 'Từ chối' },
+  moveToPending: { en: 'Move to pending', vi: 'Chuyển về chờ xử lý' },
+  cancel: { en: 'Cancel', vi: 'Hủy' },
+  deleting: { en: 'Deleting', vi: 'Đang xóa' },
+  confirmDeleteShort: { en: 'Confirm delete?', vi: 'Xác nhận xóa?' },
+  statusDraft: { en: 'Draft', vi: 'Bản nháp' },
+  statusSubmitted: { en: 'Submitted', vi: 'Đã gửi' },
+  statusUnderReview: { en: 'Under review', vi: 'Đang xem xét' },
+  statusApproved: { en: 'Approved', vi: 'Đã phê duyệt' },
+  statusPublished: { en: 'Published', vi: 'Xuất bản' },
+  statusNegotiation: { en: 'Negotiation', vi: 'Đàm phán' },
+  statusClosed: { en: 'Closed', vi: 'Đóng cửa' },
+  roleBuyer: { en: 'Buyer', vi: 'Bên mua' },
+  roleSeller: { en: 'Seller', vi: 'Bên bán' },
+  roleAdvisor: { en: 'Advisor', vi: 'Cố vấn' },
+  roleAdmin: { en: 'Admin', vi: 'Quản trị viên' },
+  kycUnverified: { en: 'Unverified', vi: 'Chưa xác minh' },
+  kycPending: { en: 'Pending', vi: 'Chờ xử lý' },
+  kycVerified: { en: 'Verified', vi: 'Đã xác minh' },
+  kycRejected: { en: 'Rejected', vi: 'Bị từ chối' },
+  activeStatus: { en: 'Active', vi: 'Hoạt động' },
+  onlyBuyerAdvisor: { en: 'Only buyer or advisor', vi: 'Chỉ bên mua hoặc cố vấn' },
+  projectLabel: { en: 'Project', vi: 'Dự án' },
+  assetIndex: { en: 'Asset Index', vi: 'Chỉ số tài sản' },
+
   // Footer
   footerDesc: { 
     en: "The world's most trusted M&A ecosystem. Secure, verified, and AI-driven infrastructure for institutional capital.", 
@@ -285,12 +331,57 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
+const preserveTerms = [
+  'M&A',
+  'AI',
+  'KYC',
+  'VDR',
+  'NDA',
+  'SSO',
+  'URL',
+  'ROI',
+  'ESOP',
+  'EBITDA',
+  'HQ',
+  'USD',
+  'VND',
+  'Nexus',
+  'Firebase',
+  'Google',
+  'Singapore',
+  'SaaS',
+  'SolarFlare',
+];
+
+function sentenceCaseVietnamese(value: string) {
+  const placeholders = new Map<string, string>();
+  let normalized = value;
+
+  preserveTerms.forEach((term, index) => {
+    const token = `__TERM_${index}__`;
+    placeholders.set(token, term);
+    normalized = normalized.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), token);
+  });
+
+  normalized = normalized.toLocaleLowerCase('vi-VN');
+  normalized = normalized.replace(/(^|[.!?]\s+)(\p{L})/gu, (_match, prefix: string, letter: string) => {
+    return `${prefix}${letter.toLocaleUpperCase('vi-VN')}`;
+  });
+
+  placeholders.forEach((term, token) => {
+    normalized = normalized.replace(new RegExp(token.toLocaleLowerCase('vi-VN'), 'g'), term);
+  });
+
+  return normalized;
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguage] = useState<Language>('vi');
 
   const t = (key: string) => {
     if (!translations[key]) return key;
-    return translations[key][language];
+    const value = translations[key][language];
+    return language === 'vi' ? sentenceCaseVietnamese(value) : value;
   };
 
   const tSector = (sector: string) => {
@@ -300,7 +391,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       'Manufacturing': 'manufacturingIndustry',
       'Logistics': 'logisticsIndustry',
       'Healthcare': 'healthcareIndustry',
-      'Finance': 'financeIndustry'
+      'Finance': 'financeIndustry',
+      'Consumer': 'consumerIndustry',
+      'Real Estate': 'realEstateIndustry',
+      'Education': 'educationIndustry',
+      'Energy': 'energyIndustry',
+      'Agriculture': 'agricultureIndustry',
+      'Media & Entertainment': 'mediaIndustry'
     };
     const key = map[sector];
     return key ? t(key) : sector;

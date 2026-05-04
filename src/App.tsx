@@ -12,7 +12,9 @@ import DealDetail from './pages/DealDetail';
 import ProfileSetup from './pages/ProfileSetup';
 import Profile from './pages/Profile';
 import MarketingCenter from './pages/MarketingCenter';
+import Admin from './pages/Admin';
 import { motion, AnimatePresence } from 'motion/react';
+import { UserRole } from './types';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
@@ -20,6 +22,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
   if (!user) return <Navigate to="/login" />;
   if (!profile && window.location.pathname !== '/profile-setup') return <Navigate to="/profile-setup" />;
+
+  return <>{children}</>;
+}
+
+function RoleRoute({ children, roles }: { children: React.ReactNode; roles: UserRole[] }) {
+  const { user, profile, loading } = useAuth();
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
+  if (!user) return <Navigate to="/login" />;
+  if (!profile) return <Navigate to="/profile-setup" />;
+  if (!roles.includes(profile.userType)) return <Navigate to="/dashboard" />;
 
   return <>{children}</>;
 }
@@ -41,8 +54,9 @@ export default function App() {
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/profile-setup" element={<ProtectedRoute><ProfileSetup /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/deals/new" element={<ProtectedRoute><CreateDeal /></ProtectedRoute>} />
-                <Route path="/marketing" element={<ProtectedRoute><MarketingCenter /></ProtectedRoute>} />
+                <Route path="/deals/new" element={<RoleRoute roles={['seller', 'admin']}><CreateDeal /></RoleRoute>} />
+                <Route path="/marketing" element={<RoleRoute roles={['seller', 'advisor', 'admin']}><MarketingCenter /></RoleRoute>} />
+                <Route path="/admin" element={<RoleRoute roles={['admin']}><Admin /></RoleRoute>} />
               </Routes>
             </main>
           </AnimatePresence>

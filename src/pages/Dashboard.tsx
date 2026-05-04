@@ -10,10 +10,20 @@ import { formatCompactNumber, formatCurrency, cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 import { handleFirestoreError, OperationType } from '../lib/firebase';
 
+const statusKeys = {
+  draft: 'statusDraft',
+  submitted: 'statusSubmitted',
+  under_review: 'statusUnderReview',
+  approved: 'statusApproved',
+  published: 'statusPublished',
+  negotiation: 'statusNegotiation',
+  closed: 'statusClosed',
+} as const;
+
 export default function Dashboard() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
-  const { t, tSector } = useLanguage();
+  const { t, tSector, language } = useLanguage();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -64,6 +74,9 @@ export default function Dashboard() {
   }, [user]);
 
   if (loading) return <div className="flex items-center justify-center h-96"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>;
+  const lang = language;
+  const dealStatusLabel = (status: Deal['status']) => t(statusKeys[status] || String(status));
+  const projectPrefix = t('projectLabel');
 
   return (
     <div className="space-y-8">
@@ -74,12 +87,22 @@ export default function Dashboard() {
           <p className="text-sm text-slate-500 font-medium">{t('portfolioOverview')} {profile?.displayName}</p>
         </div>
         <div className="flex gap-3">
-          <Link 
-            to="/deals/new" 
-            className="professional-btn shadow-lg shadow-blue-600/20"
-          >
-            {t('createProposal')}
-          </Link>
+          {(profile?.userType === 'seller' || profile?.userType === 'admin') && (
+            <Link
+              to="/deals/new"
+              className="professional-btn shadow-lg shadow-blue-600/20"
+            >
+              {t('createProposal')}
+            </Link>
+          )}
+          {profile?.userType === 'admin' && (
+            <Link
+              to="/admin"
+              className="professional-btn bg-slate-900 shadow-lg shadow-slate-900/10 hover:bg-black"
+            >
+              {t('adminNav')}
+            </Link>
+          )}
         </div>
       </div>
 
@@ -88,17 +111,17 @@ export default function Dashboard() {
         {[
           { label: t('activePipeline'), value: profile?.userType === 'buyer' ? `12 ${t('deals')}` : `${deals.length} ${t('listings')}`, icon: Building2, trend: `+2 ${t('thisWeek')}` },
           { label: t('networkReach'), value: '420', icon: Users, trend: `+18% ${t('growthLabel')}` },
-          { label: t('assetValuation'), value: profile?.userType === 'buyer' ? formatCurrency(2400000, t('language') as 'en'|'vi') : formatCurrency(12500000, t('language') as 'en'|'vi'), icon: Building2, trend: t('stable') },
+          { label: t('assetValuation'), value: profile?.userType === 'buyer' ? formatCompactNumber(2400000, lang) : formatCompactNumber(12500000, lang), icon: Building2, trend: t('stable') },
           { label: t('ndaCompletion'), value: '88%', icon: CheckCircle2, trend: t('optimal') },
         ].map((kpi, i) => (
-          <div key={i} className="glass-card p-5 rounded-xl bg-white">
+          <div key={i} className="glass-card min-w-0 p-5 rounded-xl bg-white overflow-hidden">
             <div className="flex justify-between items-start mb-4">
               <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
                 <kpi.icon className="w-5 h-5" />
               </div>
               <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full border border-green-100 uppercase tracking-wider">{kpi.trend}</span>
             </div>
-            <div className="text-2xl font-bold text-slate-900">{kpi.value}</div>
+            <div className="truncate text-2xl font-bold text-slate-900">{kpi.value}</div>
             <div className="metric-label mt-1">{kpi.label}</div>
           </div>
         ))}
@@ -120,33 +143,33 @@ export default function Dashboard() {
                   className="glass-card p-4 rounded-xl flex items-center justify-between hover:border-blue-400 transition-all bg-white overflow-hidden"
                 >
                   <div 
-                    className="flex gap-4 cursor-pointer flex-1"
+                    className="flex min-w-0 gap-4 cursor-pointer flex-1"
                     onClick={() => navigate(`/deals/${deal.id}`)}
                   >
                     <div className="w-12 h-12 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center font-bold text-slate-600 flex-shrink-0">
                       {deal.title.substring(0, 2).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <div className="font-semibold text-slate-900 flex items-center gap-2 truncate">
-                        {deal.title}
+                      <div className="font-semibold text-slate-900 flex min-w-0 items-center gap-2">
+                        <span className="truncate">{deal.title}</span>
                         <span className={cn(
                           "text-[9px] px-2 py-0.5 rounded border font-bold uppercase tracking-wider flex-shrink-0",
                           deal.status === 'published' ? "bg-green-50 text-green-600 border-green-100" : "bg-slate-100 text-slate-600 border-slate-200"
                         )}>
-                          {deal.status.replace('_', ' ')}
+                          {dealStatusLabel(deal.status)}
                         </span>
                       </div>
                       <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-3 truncate">
                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {t('updated')}: {new Date(deal.updatedAt).toLocaleDateString()}</span>
-                        <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" /> {t('revenue')}: {formatCurrency(deal.financials.revenue[deal.financials.revenue.length - 1], t('language') as 'en'|'vi')}</span>
+                        <span className="min-w-0 flex items-center gap-1"><TrendingUp className="w-3 h-3 shrink-0" /> <span className="truncate">{t('revenue')}: {formatCompactNumber(deal.financials.revenue[deal.financials.revenue.length - 1], lang)}</span></span>
                       </div>
                     </div>
                   </div>
                   
-                  <div className="text-right flex items-center gap-6 ml-4">
-                    <div className="hidden sm:block">
+                  <div className="shrink-0 text-right flex items-center gap-6 ml-4">
+                    <div className="hidden max-w-[120px] sm:block">
                       <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider font-mono">{t('askingPrice')}</div>
-                      <div className="text-lg font-bold text-slate-900 font-mono">{formatCurrency(deal.mandaInfo.valuation, t('language') as 'en'|'vi')}</div>
+                      <div className="truncate text-lg font-bold text-slate-900 font-mono" title={formatCurrency(deal.mandaInfo.valuation, lang)}>{formatCompactNumber(deal.mandaInfo.valuation, lang)}</div>
                     </div>
                     <div className="flex items-center gap-1 group/actions">
                       <AnimatePresence mode="wait">
@@ -267,8 +290,8 @@ export default function Dashboard() {
             <h3 className="metric-label mb-4">{t('recentActivity')}</h3>
             <div className="space-y-4">
               {[
-                { title: t('ndaSigned'), desc: `Project SolarFlare • 2${t('hourShort')} ${t('ago')}`, color: 'bg-blue-500' },
-                { title: t('vdrRequested'), desc: `Project GreenTier • 5${t('hourShort')} ${t('ago')}`, color: 'bg-slate-300' },
+                { title: t('ndaSigned'), desc: `${projectPrefix} SolarFlare • 2${t('hourShort')} ${t('ago')}`, color: 'bg-blue-500' },
+                { title: t('vdrRequested'), desc: `${projectPrefix} GreenTier • 5${t('hourShort')} ${t('ago')}`, color: 'bg-slate-300' },
                 { title: t('offerReceived'), desc: `SaaS Acquisition • ${t('yesterday')}`, color: 'bg-slate-300' },
               ].map((activity, i) => (
                 <div key={i} className="flex gap-3">

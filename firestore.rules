@@ -9,6 +9,11 @@ service cloud.firestore {
     // Phase 3: Primitives & Helpers
     function isSignedIn() { return request.auth != null; }
     function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    function currentUser() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function hasRole(role) { return isSignedIn() && currentUser().userType == role; }
+    function isAdmin() { return hasRole('admin'); }
+    function isSeller() { return hasRole('seller') || isAdmin(); }
+    function canInvest() { return hasRole('buyer') || hasRole('advisor') || isAdmin(); }
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
@@ -34,38 +39,42 @@ service cloud.firestore {
     match /users/{uid} {
       // Allow user to read their own profile, or allowing search for public verification?
       // Strict: Only own profile read for PII protection.
-      allow read: if isOwner(uid);
+      allow read: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
       allow create: if isOwner(uid) && isValidUser(incoming()) && incoming().kycStatus == 'unverified';
+      allow update: if isAdmin() && isValidUser(incoming());
       allow update: if isOwner(uid) && 
                     incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'country', 'updatedAt', 'userType']) &&
-                    incoming().kycStatus == existing().kycStatus; // KYC can't be self-updated
+                    incoming().kycStatus == existing().kycStatus &&
+                    incoming().userType == existing().userType; // KYC and role can't be self-updated
     }
 
     // Company Records
     match /companies/{companyId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isOwner(incoming().ownerId);
-      allow update: if isOwner(existing().ownerId) && 
+      allow create: if isSeller() && isOwner(incoming().ownerId);
+      allow update: if (isOwner(existing().ownerId) || isAdmin()) && 
                     incoming().ownerId == existing().ownerId;
     }
 
     // Deal Records
     match /deals/{dealId} {
       // FIX: Allow public read of published deals for marketplace browsing
-      allow read: if (resource.data.status == 'published') || isOwner(resource.data.sellerId);
+      allow read: if (resource.data.status == 'published') || isOwner(resource.data.sellerId) || isAdmin();
       
       // Strict query enforcement for listing
-      allow list: if (resource.data.status == 'published') || (isSignedIn() && resource.data.sellerId == request.auth.uid);
+      allow list: if isSignedIn();
 
-      allow create: if isSignedIn() && isOwner(incoming().sellerId) && isValidDeal(incoming());
+      allow create: if isSeller() && isOwner(incoming().sellerId) && isValidDeal(incoming()) && incoming().status == 'submitted';
       
+      allow update: if isAdmin() && isValidDeal(incoming());
       allow update: if (isOwner(existing().sellerId) && isValidDeal(incoming()) && (
         // Prevent self-publishing if that requires review
         (incoming().status == existing().status || (existing().status == 'approved' && incoming().status == 'published')) &&
         incoming().sellerId == existing().sellerId
       ));
 
-      allow delete: if isSignedIn() && request.auth.uid == resource.data.sellerId;
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.sellerId);
 
       // Subcollections
       match /documents/{docId} {
@@ -73,12 +82,12 @@ service cloud.firestore {
         // For now, allow read if deal is published or owner
         allow read: if (get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published') || 
                      isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId);
-        allow write: if isSignedIn() && isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId);
+        allow write: if isAdmin() || (isSignedIn() && isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
       }
 
       match /offers/{offerId} {
         allow read: if isSignedIn() && (isOwner(resource.data.buyerId) || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
-        allow create: if isSignedIn() && isOwner(incoming().buyerId) && 
+        allow create: if canInvest() && isOwner(incoming().buyerId) && 
                       get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published';
         allow update: if isSignedIn() && (isOwner(resource.data.buyerId) || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
       }

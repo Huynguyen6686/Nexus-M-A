@@ -9,7 +9,7 @@ import { formatCompactNumber, formatCurrency, cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function Home() {
-  const { t, tSector } = useLanguage();
+  const { t, tSector, language } = useLanguage();
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -95,7 +95,7 @@ export default function Home() {
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         {[
-          { label: t('activeDealVol'), value: formatCompactNumber(4200000000, t('language') as 'en'|'vi'), trend: t('upTrend'), color: 'text-blue-600' },
+          { label: t('activeDealVol'), value: formatCompactNumber(4200000000, language), trend: t('upTrend'), color: 'text-blue-600' },
           { label: t('verifiedInvestors'), value: '1,240', trend: t('verified'), color: 'text-slate-900' },
           { label: t('dailyDealFlow'), value: '28', trend: t('newToday'), color: 'text-slate-900' },
           { label: t('avgCloseTime'), value: `88 ${t('ago')}`, trend: t('optimal'), color: 'text-slate-900' },
@@ -153,14 +153,14 @@ export default function Home() {
                   <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-50 sm:grid-cols-3">
                     <div className="min-w-0">
                       <div className="metric-label text-[9px]">{t('revenue')}</div>
-                      <div className="truncate text-sm font-bold text-slate-800" title={formatCurrency(deal.financials.revenue[deal.financials.revenue.length - 1], t('language') as 'en'|'vi')}>
-                        {formatCompactNumber(deal.financials.revenue[deal.financials.revenue.length - 1], t('language') as 'en'|'vi')}
+                      <div className="truncate text-sm font-bold text-slate-800" title={formatCurrency(deal.financials.revenue[deal.financials.revenue.length - 1], language)}>
+                        {formatCompactNumber(deal.financials.revenue[deal.financials.revenue.length - 1], language)}
                       </div>
                     </div>
                     <div className="min-w-0">
                       <div className="metric-label text-[9px]">{t('ebitda')}</div>
-                      <div className="truncate text-sm font-bold text-slate-800" title={formatCurrency(deal.financials.ebitda, t('language') as 'en'|'vi')}>
-                        {formatCompactNumber(deal.financials.ebitda, t('language') as 'en'|'vi')}
+                      <div className="truncate text-sm font-bold text-slate-800" title={formatCurrency(deal.financials.ebitda, language)}>
+                        {formatCompactNumber(deal.financials.ebitda, language)}
                       </div>
                     </div>
                     <div className="min-w-0">
@@ -172,8 +172,8 @@ export default function Home() {
                   <div className="flex items-end justify-between gap-4 pt-2">
                     <div className="min-w-0">
                       <div className="text-[9px] font-bold text-slate-400 tracking-widest mb-0.5">{t('valuation')}</div>
-                      <div className="truncate text-lg font-bold text-slate-900" title={formatCurrency(deal.mandaInfo.valuation, t('language') as 'en'|'vi')}>
-                        {formatCompactNumber(deal.mandaInfo.valuation, t('language') as 'en'|'vi')}
+                      <div className="truncate text-lg font-bold text-slate-900" title={formatCurrency(deal.mandaInfo.valuation, language)}>
+                        {formatCompactNumber(deal.mandaInfo.valuation, language)}
                       </div>
                     </div>
                     <button className="shrink-0 px-5 py-2 bg-slate-900 text-white text-[10px] rounded-lg font-bold tracking-wider hover:bg-slate-800 transition-all">
