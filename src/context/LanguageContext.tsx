@@ -18,13 +18,13 @@ export const translations: Translations = {
   signIn: { en: 'Sign In', vi: 'Đăng nhập' },
   
   // Home
-  heroBadge: { en: 'Institutional Grade M&A Marketplace', vi: 'Thị trường M&A Cấp độ Tổ chức' },
-  heroTitle: { en: 'The Premier Platform', vi: 'Nền tảng Hàng đầu' },
-  heroSubtitle: { en: 'for Business Exchange', vi: 'để Trao đổi Doanh nghiệp' },
+  heroBadge: { en: 'Institutional Grade M&A Marketplace', vi: 'Thị trường M&A cấp độ tổ chức' },
+  heroTitle: { en: 'The Premier Platform', vi: 'Nền tảng hàng đầu' },
+  heroSubtitle: { en: 'for Business Exchange', vi: 'để trao đổi doanh nghiệp' },
   heroDesc: { en: 'Securely list, discover, and acquire companies with our end-to-end M&A infrastructure. Trusted by 10k+ verified professionals.', vi: 'Niêm yết, khám phá và mua lại các công ty một cách an toàn với cơ sở hạ tầng M&A toàn diện. Được tin dùng bởi hơn 10.000 chuyên gia đã xác minh.' },
   searchPlaceholder: { en: 'Search deals, industries, or regions...', vi: 'Tìm kiếm thương vụ, ngành nghề hoặc khu vực...' },
-  browseMarket: { en: 'Browse Marketplace', vi: 'Khám phá Thị trường' },
-  marketSilence: { en: 'Market Silence', vi: 'Thị trường Tạm lắng' },
+  browseMarket: { en: 'Browse Marketplace', vi: 'Khám phá thị trường' },
+  marketSilence: { en: 'Market Silence', vi: 'Thị trường tạm lắng' },
   marketSilenceDesc: { en: 'New institutional opportunities are processed daily. Check back shortly.', vi: 'Các cơ hội đầu tư mới được cập nhật hàng ngày. Vui lòng quay lại sau.' },
   
   // Profile
@@ -36,15 +36,15 @@ export const translations: Translations = {
   unnamedProfessional: { en: 'Unnamed Professional', vi: 'Chuyên gia chưa tên' },
   
   // Metrics
-  activeDealVol: { en: 'Active Deal Volume', vi: 'Tổng Khối lượng Thương vụ' },
-  verifiedInvestors: { en: 'Verified Investors', vi: 'Nhà đầu tư đã Xác minh' },
-  dailyDealFlow: { en: 'Daily Deal Flow', vi: 'Thương vụ Mới mỗi ngày' },
-  avgCloseTime: { en: 'Avg Close Time', vi: 'Thời gian Chốt Trung bình' },
+  activeDealVol: { en: 'Active Deal Volume', vi: 'Tổng khối lượng thương vụ' },
+  verifiedInvestors: { en: 'Verified Investors', vi: 'Nhà đầu tư đã xác minh' },
+  dailyDealFlow: { en: 'Daily Deal Flow', vi: 'Thương vụ mới mỗi ngày' },
+  avgCloseTime: { en: 'Avg Close Time', vi: 'Thời gian chốt trung bình' },
   
   // Recommended
-  recommendedTitle: { en: 'Recommended Opportunities', vi: 'Cơ hội Được Đề xuất' },
+  recommendedTitle: { en: 'Recommended Opportunities', vi: 'Cơ hội được đề xuất' },
   recommendedDesc: { en: 'AI-curated deals based on current market trends', vi: 'Các thương vụ được AI chọn lọc dựa trên xu hướng thị trường' },
-  viewAll: { en: 'View All', vi: 'Xem Tất cả' },
+  viewAll: { en: 'View All', vi: 'Xem tất cả' },
   details: { en: 'Details', vi: 'Chi tiết' },
   valuation: { en: 'Valuation', vi: 'Định giá' },
   revenue: { en: 'Revenue', vi: 'Doanh thu' },

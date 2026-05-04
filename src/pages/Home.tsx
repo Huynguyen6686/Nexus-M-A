@@ -41,7 +41,7 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold uppercase tracking-wider"
+            className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold tracking-wider"
           >
             <TrendingUp className="w-3 h-3" />
             <span>{t('heroBadge')}</span>
@@ -103,7 +103,7 @@ export default function Home() {
           <div key={i} className="glass-card p-6 rounded-2xl bg-white border border-slate-200">
             <div className="metric-label mb-2">{stat.label}</div>
             <div className={cn("text-2xl font-bold tracking-tight", stat.color)}>{stat.value}</div>
-            <div className="text-[10px] text-slate-400 mt-1 font-bold uppercase tracking-widest">{stat.trend}</div>
+            <div className="text-[10px] text-slate-400 mt-1 font-bold tracking-widest">{stat.trend}</div>
           </div>
         ))}
       </div>
@@ -114,7 +114,7 @@ export default function Home() {
           <h2 className="text-xl font-bold text-slate-800 tracking-tight">{t('recommendedTitle')}</h2>
           <p className="text-xs text-slate-500 mt-1 font-medium tracking-tight">{t('recommendedDesc')}</p>
         </div>
-        <button className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors uppercase tracking-widest flex items-center gap-1">
+        <button className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors tracking-widest flex items-center gap-1">
           {t('viewAll')} <ArrowRight className="w-3 h-3" />
         </button>
       </div>
@@ -139,7 +139,7 @@ export default function Home() {
                       {deal.title.substring(0, 2)}
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">{tSector(deal.industry)}</div>
+                      <div className="text-[10px] font-bold text-slate-400 tracking-widest">{tSector(deal.industry)}</div>
                       <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">{deal.title}</h3>
                     </div>
                   </div>
@@ -150,27 +150,33 @@ export default function Home() {
                     {deal.strategy.reasonForSale.substring(0, 100)}...
                   </p>
 
-                  <div className="grid grid-cols-3 gap-3 py-3 border-y border-slate-50">
-                    <div>
+                  <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-50 sm:grid-cols-3">
+                    <div className="min-w-0">
                       <div className="metric-label text-[9px]">{t('revenue')}</div>
-                      <div className="text-sm font-bold text-slate-800">{formatCurrency(deal.financials.revenue[deal.financials.revenue.length - 1], t('language') as 'en'|'vi')}</div>
+                      <div className="truncate text-sm font-bold text-slate-800" title={formatCurrency(deal.financials.revenue[deal.financials.revenue.length - 1], t('language') as 'en'|'vi')}>
+                        {formatCompactNumber(deal.financials.revenue[deal.financials.revenue.length - 1], t('language') as 'en'|'vi')}
+                      </div>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="metric-label text-[9px]">{t('ebitda')}</div>
-                      <div className="text-sm font-bold text-slate-800">{formatCurrency(deal.financials.ebitda, t('language') as 'en'|'vi')}</div>
+                      <div className="truncate text-sm font-bold text-slate-800" title={formatCurrency(deal.financials.ebitda, t('language') as 'en'|'vi')}>
+                        {formatCompactNumber(deal.financials.ebitda, t('language') as 'en'|'vi')}
+                      </div>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="metric-label text-[9px]">{t('growth')}</div>
                       <div className="text-sm font-bold text-blue-600">{deal.financials.growthRate}%</div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2">
-                    <div className="text-right">
-                      <div className="text-[9px] uppercase font-bold text-slate-400 tracking-widest mb-0.5">{t('valuation')}</div>
-                      <div className="text-lg font-bold text-slate-900">{formatCurrency(deal.mandaInfo.valuation, t('language') as 'en'|'vi')}</div>
+                  <div className="flex items-end justify-between gap-4 pt-2">
+                    <div className="min-w-0">
+                      <div className="text-[9px] font-bold text-slate-400 tracking-widest mb-0.5">{t('valuation')}</div>
+                      <div className="truncate text-lg font-bold text-slate-900" title={formatCurrency(deal.mandaInfo.valuation, t('language') as 'en'|'vi')}>
+                        {formatCompactNumber(deal.mandaInfo.valuation, t('language') as 'en'|'vi')}
+                      </div>
                     </div>
-                    <button className="px-5 py-2 bg-slate-900 text-white text-[10px] rounded-lg font-bold uppercase tracking-wider hover:bg-slate-800 transition-all">
+                    <button className="shrink-0 px-5 py-2 bg-slate-900 text-white text-[10px] rounded-lg font-bold tracking-wider hover:bg-slate-800 transition-all">
                       {t('details')}
                     </button>
                   </div>
