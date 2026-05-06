@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { auth, signInWithGoogle } from '../lib/firebase';
+import { auth } from '../lib/firebase';
 import { LayoutDashboard, LogOut, Menu, ShieldCheck, User, X } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import Notifications from './Notifications';
+import { canAccessAdmin, canCreateDeal } from '../lib/rbac';
 
 const VietnamFlag = () => (
   <svg viewBox="0 0 16 10" className="w-4 h-3 rounded-[1px] overflow-hidden shadow-sm">
@@ -26,18 +27,15 @@ export default function Navbar() {
   const navigate = useNavigate();
   const { language, setLanguage, t } = useLanguage();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const showCreateDeal = canCreateDeal(profile);
+  const showAdmin = canAccessAdmin(profile);
 
   const toggleLanguage = () => {
     setLanguage(language === 'en' ? 'vi' : 'en');
   };
 
   const handleLogin = async () => {
-    try {
-      await signInWithGoogle();
-      navigate('/dashboard');
-    } catch (error) {
-      console.error('Login failed:', error);
-    }
+    navigate('/login');
   };
 
   const navItems = [
@@ -87,7 +85,7 @@ export default function Navbar() {
 
             {user ? (
               <>
-                {(profile?.userType === 'seller' || profile?.userType === 'admin') && (
+                {showCreateDeal && (
                   <Link
                     to="/deals/new"
                     className="professional-btn hidden h-9 shrink-0 items-center justify-center whitespace-nowrap px-6 text-xs sm:flex"
@@ -104,7 +102,7 @@ export default function Navbar() {
                   <LayoutDashboard className="h-4 w-4" />
                 </Link>
 
-                {profile?.userType === 'admin' && (
+                {showAdmin && (
                   <Link to="/admin" className="hidden p-2 text-slate-400 transition-colors hover:text-blue-600 sm:block" title="Admin">
                     <ShieldCheck className="h-4 w-4" />
                   </Link>
@@ -153,8 +151,8 @@ export default function Navbar() {
               ...navItems,
               ...(user ? [{ to: '/dashboard', label: 'Dashboard' }] : []),
               ...(user ? [{ to: '/profile', label: t('editProfile') }] : []),
-              ...(profile?.userType === 'admin' ? [{ to: '/admin', label: t('adminNav') }] : []),
-              ...(profile?.userType === 'seller' || profile?.userType === 'admin' ? [{ to: '/deals/new', label: t('listDeal') }] : []),
+              ...(showAdmin ? [{ to: '/admin', label: t('adminNav') }] : []),
+              ...(showCreateDeal ? [{ to: '/deals/new', label: t('listDeal') }] : []),
             ].map(item => (
               <Link
                 key={item.to}

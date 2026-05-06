@@ -8,6 +8,7 @@ service cloud.firestore {
 
     // Phase 3: Primitives & Helpers
     function isSignedIn() { return request.auth != null; }
+    function emailVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
     function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
     function currentUser() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function hasRole(role) { return isSignedIn() && currentUser().userType == role; }
@@ -33,20 +34,59 @@ service cloud.firestore {
              data.mandaInfo.valuation is number && data.mandaInfo.valuation >= 0;
     }
 
+    function isValidDealWatch(data, uid, dealId) {
+      return data.userId == uid &&
+             data.dealId == dealId &&
+             data.createdAt is string &&
+             data.updatedAt is string &&
+             data.keys().hasOnly(['userId', 'dealId', 'title', 'industry', 'valuation', 'status', 'createdAt', 'updatedAt']);
+    }
+
     // Phase 4: Match Blocks
 
     // User Records
     match /users/{uid} {
       // Allow user to read their own profile, or allowing search for public verification?
       // Strict: Only own profile read for PII protection.
-      allow read: if isOwner(uid) || isAdmin();
+      allow read: if isSignedIn();
       allow list: if isAdmin();
-      allow create: if isOwner(uid) && isValidUser(incoming()) && incoming().kycStatus == 'unverified';
+      allow create: if isOwner(uid) &&
+                    emailVerified() &&
+                    isValidUser(incoming()) &&
+                    incoming().kycStatus == 'unverified' &&
+                    incoming().userType in ['buyer', 'seller', 'advisor'];
       allow update: if isAdmin() && isValidUser(incoming());
       allow update: if isOwner(uid) && 
-                    incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'country', 'updatedAt', 'userType']) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly([
+                      'displayName',
+                      'photoURL',
+                      'country',
+                      'phone',
+                      'headline',
+                      'companyName',
+                      'jobTitle',
+                      'bio',
+                      'website',
+                      'interests',
+                      'preferredDealSizeMin',
+                      'preferredDealSizeMax',
+                      'updatedAt',
+                      'userType'
+                    ]) &&
                     incoming().kycStatus == existing().kycStatus &&
                     incoming().userType == existing().userType; // KYC and role can't be self-updated
+
+      match /savedDeals/{dealId} {
+        allow read, list: if isOwner(uid) || isAdmin();
+        allow create, update: if isOwner(uid) && isValidDealWatch(incoming(), uid, dealId);
+        allow delete: if isOwner(uid) || isAdmin();
+      }
+
+      match /followedDeals/{dealId} {
+        allow read, list: if isOwner(uid) || isAdmin();
+        allow create, update: if isOwner(uid) && isValidDealWatch(incoming(), uid, dealId);
+        allow delete: if isOwner(uid) || isAdmin();
+      }
     }
 
     // Company Records
@@ -78,11 +118,33 @@ service cloud.firestore {
 
       // Subcollections
       match /documents/{docId} {
-        // Documents should probably be restricted to people involved or people who signed NDA
-        // For now, allow read if deal is published or owner
-        allow read: if (get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published') || 
-                     isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId);
+        allow read: if isSignedIn() && (
+                     isAdmin() ||
+                     isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId) ||
+                     (
+                       canInvest() &&
+                       currentUser().kycStatus == 'verified' &&
+                       get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published'
+                     )
+                   );
         allow write: if isAdmin() || (isSignedIn() && isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId));
+      }
+
+      match /vdrAccessLogs/{logId} {
+        allow read: if isAdmin() || isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId);
+        allow create: if isSignedIn() &&
+          incoming().dealId == dealId &&
+          incoming().userId == request.auth.uid &&
+          incoming().createdAt is string &&
+          (
+            isAdmin() ||
+            isOwner(get(/databases/$(database)/documents/deals/$(dealId)).data.sellerId) ||
+            (
+              canInvest() &&
+              currentUser().kycStatus == 'verified' &&
+              get(/databases/$(database)/documents/deals/$(dealId)).data.status == 'published'
+            )
+          );
       }
 
       match /offers/{offerId} {

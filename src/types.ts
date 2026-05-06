@@ -11,6 +11,15 @@ export interface UserProfile {
   photoURL?: string;
   userType: UserRole;
   country: string;
+  phone?: string;
+  headline?: string;
+  companyName?: string;
+  jobTitle?: string;
+  bio?: string;
+  website?: string;
+  interests?: string[];
+  preferredDealSizeMin?: number;
+  preferredDealSizeMax?: number;
   kycStatus: KYCStatus;
   createdAt: string;
   updatedAt: string;

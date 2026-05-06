@@ -17,6 +17,7 @@ import Resources from './pages/Resources';
 import Network from './pages/Network';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserRole } from './types';
+import { hasRole, routeRoles } from './lib/rbac';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
@@ -36,9 +37,23 @@ function RoleRoute({ children, roles }: { children: React.ReactNode; roles: User
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
   if (!user) return <Navigate to="/login" />;
   if (!profile) return <Navigate to="/profile-setup" />;
-  if (!roles.includes(profile.userType)) return <Navigate to="/dashboard" />;
+  if (!hasRole(profile, roles)) return <AccessDenied />;
 
   return <>{children}</>;
+}
+
+function AccessDenied() {
+  return (
+    <div className="mx-auto flex min-h-[50vh] max-w-xl flex-col items-center justify-center text-center">
+      <div className="mb-4 rounded-full border border-amber-100 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700">
+        Quyền truy cập bị giới hạn
+      </div>
+      <h1 className="text-2xl font-bold text-slate-950">Tài khoản của bạn chưa có quyền vào khu vực này.</h1>
+      <p className="mt-3 text-sm font-medium leading-6 text-slate-500">
+        Vai trò buyer, seller, advisor và admin được tách riêng để bảo vệ dữ liệu giao dịch.
+      </p>
+    </div>
+  );
 }
 
 export default function App() {
@@ -60,9 +75,9 @@ export default function App() {
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/profile-setup" element={<ProtectedRoute><ProfileSetup /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                <Route path="/deals/new" element={<RoleRoute roles={['seller', 'admin']}><CreateDeal /></RoleRoute>} />
-                <Route path="/marketing" element={<RoleRoute roles={['seller', 'advisor', 'admin']}><MarketingCenter /></RoleRoute>} />
-                <Route path="/admin" element={<RoleRoute roles={['admin']}><Admin /></RoleRoute>} />
+                <Route path="/deals/new" element={<RoleRoute roles={routeRoles('createDeal')}><CreateDeal /></RoleRoute>} />
+                <Route path="/marketing" element={<RoleRoute roles={routeRoles('marketing')}><MarketingCenter /></RoleRoute>} />
+                <Route path="/admin" element={<RoleRoute roles={routeRoles('admin')}><Admin /></RoleRoute>} />
               </Routes>
             </main>
           </AnimatePresence>

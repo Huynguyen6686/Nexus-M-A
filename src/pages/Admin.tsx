@@ -53,6 +53,8 @@ export default function Admin() {
   const [activeTab, setActiveTab] = useState<'deals' | 'users' | 'kyc'>('deals');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmDeleteDealId, setConfirmDeleteDealId] = useState<string | null>(null);
+  const [confirmRoleChange, setConfirmRoleChange] = useState<{ uid: string; nextRole: UserRole } | null>(null);
+  const [confirmDealStatusChange, setConfirmDealStatusChange] = useState<{ dealId: string; nextStatus: DealStatus } | null>(null);
 
   const pendingDeals = useMemo(
     () => deals.filter(deal => ['submitted', 'under_review', 'approved'].includes(deal.status)),
@@ -63,6 +65,13 @@ export default function Admin() {
     () => users.filter(user => user.kycStatus !== 'verified'),
     [users],
   );
+
+  const usersById = useMemo(() => {
+    return users.reduce<Record<string, UserProfile>>((acc, user) => {
+      acc[user.uid] = user;
+      return acc;
+    }, {});
+  }, [users]);
 
   useEffect(() => {
     const fetchAdminData = async () => {
@@ -144,6 +153,12 @@ export default function Admin() {
   const dealStatusLabel = (status: DealStatus) => t(statusKeys[status]);
   const roleLabel = (role: UserRole) => t(roleKeys[role]);
   const kycLabel = (status: KYCStatus) => t(kycKeys[status]);
+  const roleChangeUser = confirmRoleChange ? users.find(user => user.uid === confirmRoleChange.uid) : null;
+  const statusChangeDeal = confirmDealStatusChange ? deals.find(deal => deal.id === confirmDealStatusChange.dealId) : null;
+  const forwardDealStatuses = (status: DealStatus) => {
+    const currentIndex = dealStatuses.indexOf(status);
+    return currentIndex >= 0 ? dealStatuses.slice(currentIndex + 1) : dealStatuses;
+  };
 
   if (loading) {
     return <div className="flex h-96 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" /></div>;
@@ -224,15 +239,15 @@ export default function Admin() {
                     <span>{tSector(deal.industry)}</span>
                     <span>{deal.location}</span>
                     <span>{formatCompactNumber(deal.mandaInfo.valuation, language)}</span>
-                    <span>{t('sellerLabel')}: {deal.sellerId.slice(0, 8)}...</span>
+                    <span>{t('sellerLabel')}: {usersById[deal.sellerId]?.displayName || `${deal.sellerId.slice(0, 8)}...`}</span>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {dealStatuses.map(status => (
+                  {forwardDealStatuses(deal.status).map(status => (
                     <button
                       key={status}
-                      onClick={() => updateDealStatus(deal.id, status)}
+                      onClick={() => setConfirmDealStatusChange({ dealId: deal.id, nextStatus: status })}
                       disabled={updating === `deal-${deal.id}` || deal.status === status}
                       className={cn(
                         'rounded-lg border px-3 py-2 text-[10px] font-bold transition-all',
@@ -242,6 +257,11 @@ export default function Admin() {
                       {dealStatusLabel(status)}
                     </button>
                   ))}
+                  {forwardDealStatuses(deal.status).length === 0 && (
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-bold text-slate-400">
+                      Không còn bước tiếp theo
+                    </span>
+                  )}
                   {confirmDeleteDealId === deal.id ? (
                     <div className="flex items-center gap-2 rounded-xl border border-rose-100 bg-rose-50 p-1 pl-3">
                       <span className="text-[10px] font-bold text-rose-700">{t('confirmDeleteShort')}</span>
@@ -295,7 +315,7 @@ export default function Admin() {
                 {roles.map(role => (
                   <button
                     key={role}
-                    onClick={() => updateUser(user.uid, { userType: role })}
+                    onClick={() => setConfirmRoleChange({ uid: user.uid, nextRole: role })}
                     disabled={updating === `user-${user.uid}` || user.userType === role}
                     className={cn(
                       'rounded-lg border px-3 py-2 text-[10px] font-bold',
@@ -371,6 +391,96 @@ export default function Admin() {
         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-12 text-center">
           <Briefcase className="mx-auto mb-4 h-10 w-10 text-slate-300" />
           <h3 className="font-bold text-slate-800">{t('noKycTitle')}</h3>
+        </div>
+      )}
+
+      {confirmRoleChange && roleChangeUser && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20"
+          >
+            <div className="mb-5 flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <UserCog className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-slate-900">Xác nhận đổi vai trò</h3>
+                <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
+                  Bạn có chắc muốn đổi vai trò của <strong className="text-slate-900">{roleChangeUser.displayName}</strong> từ <strong>{roleLabel(roleChangeUser.userType)}</strong> sang <strong>{roleLabel(confirmRoleChange.nextRole)}</strong> không?
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4 text-xs font-medium text-slate-500">
+              Thay đổi này ảnh hưởng tới quyền đăng thương vụ, gửi offer, duyệt KYC và quyền truy cập trang admin.
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setConfirmRoleChange(null)}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={async () => {
+                  const pending = confirmRoleChange;
+                  setConfirmRoleChange(null);
+                  await updateUser(pending.uid, { userType: pending.nextRole });
+                }}
+                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-black"
+              >
+                Xác nhận đổi
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {confirmDealStatusChange && statusChangeDeal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 px-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl shadow-slate-950/20"
+          >
+            <div className="mb-5 flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <Briefcase className="h-6 w-6" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-slate-900">Xác nhận đổi trạng thái</h3>
+                <p className="mt-1 text-sm font-medium leading-6 text-slate-500">
+                  Bạn có chắc muốn đổi trạng thái thương vụ <strong className="text-slate-900">{statusChangeDeal.title}</strong> từ <strong>{dealStatusLabel(statusChangeDeal.status)}</strong> sang <strong>{dealStatusLabel(confirmDealStatusChange.nextStatus)}</strong> không?
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4 text-xs font-medium text-slate-500">
+              Thay đổi này ảnh hưởng tới việc thương vụ có xuất hiện trên marketplace, được đàm phán hay bị đóng.
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setConfirmDealStatusChange(null)}
+                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={async () => {
+                  const pending = confirmDealStatusChange;
+                  setConfirmDealStatusChange(null);
+                  await updateDealStatus(pending.dealId, pending.nextStatus);
+                }}
+                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-black"
+              >
+                Xác nhận đổi
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

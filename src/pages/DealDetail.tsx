@@ -1,17 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { doc, getDoc, collection, query, getDocs, addDoc, onSnapshot, orderBy, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, getDocs, addDoc, onSnapshot, orderBy, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { Deal, DealDocument, Message, Offer } from '../types';
+import { Deal, DealDocument, DocumentCategory, Message, Offer, UserProfile } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { 
   Building2, MapPin, TrendingUp, DollarSign, Calendar, Target,
   ShieldCheck, FileText, Lock, ArrowLeft, Download, 
-  ExternalLink, ChevronRight, MessageCircle, Send, Sparkles, CheckCircle2
+  ExternalLink, ChevronRight, MessageCircle, Send, Sparkles, CheckCircle2, Upload, Bookmark, Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatCompactNumber, formatCurrency, cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
+import { canCounterOffer, canManageDeal, canSubmitOffer, canUnlockVdr, canUploadVdr } from '../lib/rbac';
+
+const dealStatusKeys: Record<Deal['status'], string> = {
+  draft: 'statusDraft',
+  submitted: 'statusSubmitted',
+  under_review: 'statusUnderReview',
+  approved: 'statusApproved',
+  published: 'statusPublished',
+  negotiation: 'statusNegotiation',
+  closed: 'statusClosed',
+};
+
+const documentCategories: Array<{ id: DocumentCategory; label: string }> = [
+  { id: 'financial', label: 'Tài chính' },
+  { id: 'legal', label: 'Pháp lý' },
+  { id: 'hr', label: 'Nhân sự' },
+  { id: 'contracts', label: 'Hợp đồng' },
+  { id: 'tech', label: 'Công nghệ' },
+];
 
 export default function DealDetail() {
   const { t, tSector, language } = useLanguage();
@@ -19,9 +38,18 @@ export default function DealDetail() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [deal, setDeal] = useState<Deal | null>(null);
+  const [seller, setSeller] = useState<UserProfile | null>(null);
   const [docs, setDocs] = useState<DealDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [ndaSigned, setNdaSigned] = useState(false);
+  const [showNdaConfirm, setShowNdaConfirm] = useState(false);
+  const [vdrLoading, setVdrLoading] = useState(false);
+  const [vdrError, setVdrError] = useState('');
+  const [uploadCategory, setUploadCategory] = useState<DocumentCategory>('financial');
+  const [documentName, setDocumentName] = useState('');
+  const [documentUrl, setDocumentUrl] = useState('');
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [offerLoading, setOfferLoading] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -34,6 +62,9 @@ export default function DealDetail() {
   const [counterNote, setCounterNote] = useState('');
   const [messageText, setMessageText] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'financials' | 'matching'>('overview');
+  const [savedDeal, setSavedDeal] = useState(false);
+  const [followedDeal, setFollowedDeal] = useState(false);
+  const [watchLoading, setWatchLoading] = useState<'savedDeals' | 'followedDeals' | null>(null);
 
   useEffect(() => {
     const fetchDeal = async () => {
@@ -42,11 +73,25 @@ export default function DealDetail() {
         const docRef = doc(db, 'deals', id);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setDeal({ id: docSnap.id, ...docSnap.data() } as Deal);
+          const fetchedDeal = { id: docSnap.id, ...docSnap.data() } as Deal;
+          setDeal(fetchedDeal);
+          try {
+            const sellerSnap = await getDoc(doc(db, 'users', fetchedDeal.sellerId));
+            if (sellerSnap.exists()) {
+              setSeller({ uid: sellerSnap.id, ...sellerSnap.data() } as UserProfile);
+            }
+          } catch (sellerError) {
+            console.warn('Unable to load seller profile:', sellerError);
+          }
           
-          const docsQ = query(collection(db, `deals/${id}/documents`));
-          const docsSnap = await getDocs(docsQ);
-          setDocs(docsSnap.docs.map(d => ({ id: d.id, ...d.data() } as DealDocument)));
+          try {
+            const docsQ = query(collection(db, `deals/${id}/documents`));
+            const docsSnap = await getDocs(docsQ);
+            setDocs(docsSnap.docs.map(d => ({ id: d.id, ...d.data() } as DealDocument)));
+          } catch (docsError) {
+            console.warn('VDR documents are locked:', docsError);
+            setDocs([]);
+          }
         } else {
           navigate('/');
         }
@@ -79,8 +124,31 @@ export default function DealDetail() {
     };
   }, [id, user]);
 
+  useEffect(() => {
+    if (!id || !user) {
+      setSavedDeal(false);
+      setFollowedDeal(false);
+      return;
+    }
+
+    const loadWatchState = async () => {
+      try {
+        const [savedSnap, followedSnap] = await Promise.all([
+          getDoc(doc(db, `users/${user.uid}/savedDeals`, id)),
+          getDoc(doc(db, `users/${user.uid}/followedDeals`, id)),
+        ]);
+        setSavedDeal(savedSnap.exists());
+        setFollowedDeal(followedSnap.exists());
+      } catch (error) {
+        console.warn('Deal watch state skipped:', error);
+      }
+    };
+
+    loadWatchState();
+  }, [id, user]);
+
   const handleSendOffer = async () => {
-    if (!user || !deal) return;
+    if (!user || !deal || !canSubmitOffer(profile, deal)) return;
     const amount = Number(offerAmount) || deal.mandaInfo.valuation;
     const equity = Math.min(100, Math.max(0, Number(offerEquity) || deal.mandaInfo.equityOffered));
     setOfferLoading(true);
@@ -110,8 +178,41 @@ export default function DealDetail() {
     }
   };
 
-  const handleCounterOffer = async (offer: Offer) => {
+  const handleToggleWatch = async (collectionName: 'savedDeals' | 'followedDeals') => {
     if (!user || !deal) return;
+    const currentValue = collectionName === 'savedDeals' ? savedDeal : followedDeal;
+    const ref = doc(db, `users/${user.uid}/${collectionName}`, deal.id);
+
+    setWatchLoading(collectionName);
+    try {
+      if (currentValue) {
+        await deleteDoc(ref);
+        if (collectionName === 'savedDeals') setSavedDeal(false);
+        if (collectionName === 'followedDeals') setFollowedDeal(false);
+      } else {
+        const now = new Date().toISOString();
+        await setDoc(ref, {
+          userId: user.uid,
+          dealId: deal.id,
+          title: deal.title,
+          industry: deal.industry,
+          valuation: deal.mandaInfo.valuation,
+          status: deal.status,
+          createdAt: now,
+          updatedAt: now,
+        });
+        if (collectionName === 'savedDeals') setSavedDeal(true);
+        if (collectionName === 'followedDeals') setFollowedDeal(true);
+      }
+    } catch (error) {
+      handleFirestoreError(error, currentValue ? OperationType.DELETE : OperationType.WRITE, `users/${user.uid}/${collectionName}/${deal.id}`);
+    } finally {
+      setWatchLoading(null);
+    }
+  };
+
+  const handleCounterOffer = async (offer: Offer) => {
+    if (!user || !deal || !canCounterOffer(profile, user.uid, deal)) return;
     const amount = Number(counterAmount) || offer.amount;
     const equity = Math.min(100, Math.max(0, Number(counterEquity) || offer.equity));
     const now = new Date().toISOString();
@@ -144,7 +245,9 @@ export default function DealDetail() {
   };
 
   const handleOfferStatus = async (offer: Offer, status: Offer['status']) => {
-    if (!deal) return;
+    if (!deal || !user || !profile) return;
+    const canUpdateOffer = profile.userType === 'admin' || offer.buyerId === user.uid || deal.sellerId === user.uid;
+    if (!canUpdateOffer) return;
     try {
       await updateDoc(doc(db, `deals/${deal.id}/offers`, offer.id), {
         status,
@@ -174,6 +277,90 @@ export default function DealDetail() {
     }
   };
 
+  const handleUnlockVdr = async () => {
+    if (!user || !deal || !profile) return;
+    const sellerOrAdmin = canManageDeal(profile, user.uid, deal);
+
+    setVdrError('');
+    if (!canUnlockVdr(profile, user.uid, deal)) {
+      setVdrError('Bạn cần hoàn tất KYC trước khi mở VDR.');
+      return;
+    }
+
+    if (!sellerOrAdmin && !showNdaConfirm) {
+      setShowNdaConfirm(true);
+      return;
+    }
+
+    setVdrLoading(true);
+    try {
+      await addDoc(collection(db, `deals/${deal.id}/vdrAccessLogs`), {
+        dealId: deal.id,
+        userId: user.uid,
+        userEmail: user.email || '',
+        userName: profile.displayName || user.displayName || '',
+        userType: profile.userType,
+        ndaAccepted: !sellerOrAdmin,
+        createdAt: new Date().toISOString(),
+      });
+      setNdaSigned(true);
+      setShowNdaConfirm(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `deals/${deal.id}/vdrAccessLogs`);
+    } finally {
+      setVdrLoading(false);
+    }
+  };
+
+  const handleAddDocumentLink = async () => {
+    if (!user || !deal || !canUploadVdr(profile, user.uid, deal)) return;
+
+    setUploadError('');
+    const cleanName = documentName.trim();
+    const cleanUrl = documentUrl.trim();
+
+    if (!cleanName || !cleanUrl) {
+      setUploadError('Vui lòng nhập tên tài liệu và đường dẫn.');
+      return;
+    }
+
+    try {
+      const parsedUrl = new URL(cleanUrl);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        setUploadError('Link tài liệu phải bắt đầu bằng http hoặc https.');
+        return;
+      }
+    } catch {
+      setUploadError('Link tài liệu không hợp lệ.');
+      return;
+    }
+
+    setUploadingDoc(true);
+    try {
+      const now = new Date().toISOString();
+      const newDoc = {
+        dealId: deal.id,
+        category: uploadCategory,
+        name: cleanName.slice(0, 120),
+        url: cleanUrl,
+        size: 0,
+        type: 'external-link',
+        ownerId: user.uid,
+        permissions: ['seller', 'admin', 'verified_investor'],
+        createdAt: now,
+      };
+      const docRef = await addDoc(collection(db, `deals/${deal.id}/documents`), newDoc);
+      setDocs(prev => [{ id: docRef.id, ...newDoc } as DealDocument, ...prev]);
+      setDocumentName('');
+      setDocumentUrl('');
+    } catch (error) {
+      console.error('Add document link failed:', error);
+      setUploadError('Không lưu được link tài liệu. Vui lòng thử lại.');
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-screen"><div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>;
   if (!deal) return null;
 
@@ -182,9 +369,10 @@ export default function DealDetail() {
   const growthRate = Math.min(100, Math.max(0, Number(deal.financials.growthRate) || 0));
   const equityOffered = Math.min(100, Math.max(0, Number(deal.mandaInfo.equityOffered) || 0));
   const ebitdaMargin = Math.min(100, Math.max(0, latestRevenue > 0 ? (deal.financials.ebitda / latestRevenue * 100) : 0)).toFixed(1);
-  const canInvest = profile?.userType === 'buyer' || profile?.userType === 'advisor' || profile?.userType === 'admin';
-  const isSellerOwner = profile?.userType === 'admin' || deal.sellerId === user?.uid;
+  const canInvest = canSubmitOffer(profile, deal);
+  const isSellerOwner = canManageDeal(profile, user?.uid, deal);
   const canUseDealRoom = Boolean(user && (isSellerOwner || canInvest));
+  const canAccessVdr = canUnlockVdr(profile, user?.uid, deal);
   const ownLatestOffer = offers.find(offer => offer.buyerId === user?.uid);
   const offerStatusLabel: Record<Offer['status'], string> = {
     pending: 'Chờ phản hồi',
@@ -193,6 +381,17 @@ export default function DealDetail() {
     rejected: 'Đã từ chối',
     withdrawn: 'Đã rút',
   };
+  const dealStatusLabel = (status: Deal['status']) => t(dealStatusKeys[status]);
+  const dealVerificationLabel = deal.status === 'published'
+    ? t('verifiedListing')
+    : deal.status === 'approved'
+      ? dealStatusLabel('approved')
+      : dealStatusLabel(deal.status);
+  const dealVerificationClass = deal.status === 'published'
+    ? 'border-blue-100 bg-blue-50 text-blue-600'
+    : deal.status === 'approved'
+      ? 'border-green-100 bg-green-50 text-green-700'
+      : 'border-amber-100 bg-amber-50 text-amber-700';
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-24">
@@ -212,8 +411,55 @@ export default function DealDetail() {
           <div className="glass-card overflow-hidden p-8 rounded-3xl bg-white border border-slate-200">
             <div className="flex flex-col gap-6 xl:flex-row xl:justify-between xl:items-start mb-6">
               <div className="min-w-0 space-y-4">
-                <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-blue-100">
-                  <ShieldCheck className="w-3 h-3" /> {t('verifiedListing')}
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-1.5">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white text-xs font-bold text-slate-500">
+                      {seller?.photoURL ? (
+                        <img src={seller.photoURL} alt={seller.displayName} className="h-full w-full object-cover" />
+                      ) : (
+                        (seller?.displayName || 'S').slice(0, 1).toUpperCase()
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Người đăng bán</div>
+                      <div className="max-w-[180px] truncate text-xs font-bold text-slate-800">{seller?.displayName || deal.sellerId}</div>
+                    </div>
+                  </div>
+                  <div className={cn("inline-flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest border", dealVerificationClass)}>
+                    <ShieldCheck className="w-3 h-3" /> {dealVerificationLabel}
+                  </div>
+                  {user && !isSellerOwner && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleWatch('savedDeals')}
+                        disabled={watchLoading === 'savedDeals'}
+                        className={cn(
+                          "inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                          savedDeal
+                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:text-amber-700"
+                        )}
+                      >
+                        <Bookmark className={cn("h-3 w-3", savedDeal && "fill-current")} />
+                        {savedDeal ? 'Đã lưu' : 'Lưu'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleWatch('followedDeals')}
+                        disabled={watchLoading === 'followedDeals'}
+                        className={cn(
+                          "inline-flex items-center gap-2 rounded-lg border px-3 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                          followedDeal
+                            ? "border-blue-200 bg-blue-50 text-blue-700"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:text-blue-700"
+                        )}
+                      >
+                        <Eye className="h-3 w-3" />
+                        {followedDeal ? 'Đang theo dõi' : 'Theo dõi'}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <h1 className="max-w-full break-words text-3xl md:text-4xl font-bold text-slate-900 leading-tight tracking-tight [overflow-wrap:anywhere]">
                   {deal.title}
@@ -426,18 +672,104 @@ export default function DealDetail() {
                   Offer gần nhất: <span className="text-blue-600">{offerStatusLabel[ownLatestOffer.status]}</span>
                 </p>
               )}
+
+              {isSellerOwner && (
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <Upload className="h-4 w-4 text-blue-600" />
+                    <div className="text-xs font-bold uppercase tracking-wider text-blue-700">Thêm tài liệu VDR bằng link</div>
+                  </div>
+                  <div className="space-y-3">
+                    <select
+                      value={uploadCategory}
+                      onChange={(event) => setUploadCategory(event.target.value as DocumentCategory)}
+                      className="w-full rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
+                    >
+                      {documentCategories.map(category => (
+                        <option key={category.id} value={category.id}>{category.label}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={documentName}
+                      onChange={(event) => setDocumentName(event.target.value.slice(0, 120))}
+                      placeholder="Tên tài liệu, ví dụ: Báo cáo tài chính 2024"
+                      className="w-full rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-blue-500"
+                    />
+                    <input
+                      value={documentUrl}
+                      onChange={(event) => setDocumentUrl(event.target.value.slice(0, 500))}
+                      placeholder="Link Google Drive, OneDrive hoặc PDF"
+                      className="w-full rounded-xl border border-blue-100 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none placeholder:text-slate-400 focus:border-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddDocumentLink}
+                      disabled={!documentName.trim() || !documentUrl.trim() || uploadingDoc}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {uploadingDoc ? 'Đang lưu...' : 'Thêm vào VDR'}
+                    </button>
+                    {uploadError && <p className="text-xs font-bold text-rose-600">{uploadError}</p>}
+                  </div>
+                </div>
+              )}
               
               {!ndaSigned ? (
-                <button 
-                  onClick={() => setNdaSigned(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-slate-200 rounded-xl font-bold text-xs uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all"
-                >
-                  {t('unlockVdr')} <Lock className="w-4 h-4 text-slate-400" />
-                </button>
+                <div className="space-y-3">
+                  {showNdaConfirm && (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <div className="text-xs font-bold uppercase tracking-wider text-amber-800">Xác nhận NDA</div>
+                      <p className="mt-2 text-xs font-medium leading-relaxed text-amber-900">
+                        Bằng cách mở VDR, bạn xác nhận chỉ sử dụng tài liệu cho mục đích đánh giá thương vụ và không chia sẻ dữ liệu nhạy cảm ra bên ngoài.
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleUnlockVdr}
+                    disabled={vdrLoading || (!canAccessVdr && !isSellerOwner)}
+                    className={cn(
+                      "w-full flex items-center justify-center gap-2 py-3 border-2 rounded-xl font-bold text-xs uppercase tracking-widest transition-all",
+                      canAccessVdr
+                        ? "border-slate-200 text-slate-600 hover:bg-slate-50"
+                        : "cursor-not-allowed border-amber-200 bg-amber-50 text-amber-700"
+                    )}
+                  >
+                    {vdrLoading ? 'Đang mở VDR...' : canAccessVdr ? (showNdaConfirm ? 'Xác nhận mở VDR' : t('unlockVdr')) : 'Cần xác minh KYC'}
+                    <Lock className="w-4 h-4 text-slate-400" />
+                  </button>
+                  {vdrError && <p className="text-xs font-bold text-rose-600">{vdrError}</p>}
+                </div>
               ) : (
-                <button className="w-full flex items-center justify-center gap-2 py-3 border-2 border-slate-200 rounded-xl font-bold text-xs uppercase tracking-widest text-slate-600 hover:bg-slate-50 transition-all">
-                  {t('downloadTeaser')} <Download className="w-4 h-4" />
-                </button>
+                <div className="rounded-2xl border border-green-100 bg-green-50 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider text-green-700">VDR đã mở khóa</div>
+                      <div className="text-[11px] font-medium text-green-700">{docs.length} tài liệu khả dụng</div>
+                    </div>
+                    <ShieldCheck className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="space-y-2">
+                    {docs.length > 0 ? docs.map(document => (
+                      <a
+                        key={document.id}
+                        href={document.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-green-100 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition-colors hover:border-green-200 hover:text-blue-600"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <FileText className="h-4 w-4 shrink-0 text-green-600" />
+                          <span className="truncate">{document.name}</span>
+                        </span>
+                        <Download className="h-4 w-4 shrink-0 text-slate-400" />
+                      </a>
+                    )) : (
+                      <div className="rounded-xl border border-dashed border-green-200 bg-white/70 p-3 text-xs font-medium text-green-700">
+                        Chưa có tài liệu nào trong VDR của thương vụ này.
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
 

@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
 import { Deal, DealStatus } from '../types';
 import { cn, formatCompactNumber } from '../lib/utils';
+import { isAdmin, isSeller } from '../lib/rbac';
 
 type NotificationItem = {
   id: string;
@@ -36,7 +37,7 @@ function readJsonMap(key: string) {
 }
 
 export default function Notifications() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { language } = useLanguage();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -46,12 +47,14 @@ export default function Notifications() {
   const seenStatusesKey = user ? `nexus_seen_statuses_${user.uid}` : '';
 
   useEffect(() => {
-    if (!user) {
+    if (!user || (!isSeller(profile) && !isAdmin(profile))) {
       setItems([]);
       return;
     }
 
-    const dealsQuery = query(collection(db, 'deals'), where('sellerId', '==', user.uid), limit(50));
+    const dealsQuery = isAdmin(profile)
+      ? query(collection(db, 'deals'), limit(50))
+      : query(collection(db, 'deals'), where('sellerId', '==', user.uid), limit(50));
 
     const unsubscribe = onSnapshot(dealsQuery, async snapshot => {
       const ownedDeals = snapshot.docs.map(item => ({ id: item.id, ...item.data() } as Deal));
@@ -106,7 +109,7 @@ export default function Notifications() {
     });
 
     return () => unsubscribe();
-  }, [language, seenOffersKey, seenStatusesKey, user]);
+  }, [language, profile, seenOffersKey, seenStatusesKey, user]);
 
   const unreadCount = items.length;
 

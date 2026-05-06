@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../context/LanguageContext';
+import { canCreateDeal } from '../lib/rbac';
 
 export default function Network() {
   const { user, profile } = useAuth();
@@ -74,10 +75,10 @@ export default function Network() {
     'Buyers, sellers, and advisors interact through separated permissions.',
   ];
 
-  const primaryHref = !user ? '/login' : profile?.userType === 'seller' || profile?.userType === 'admin' ? '/deals/new' : '/';
+  const primaryHref = !user ? '/login' : canCreateDeal(profile) ? '/deals/new' : '/';
   const primaryLabel = !user
     ? (vi ? 'Đăng nhập để tham gia' : 'Sign in to join')
-    : profile?.userType === 'seller' || profile?.userType === 'admin'
+    : canCreateDeal(profile)
       ? (vi ? 'Đăng thương vụ' : 'List a deal')
       : (vi ? 'Khám phá thị trường' : 'Browse marketplace');
 

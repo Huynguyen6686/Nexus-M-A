@@ -39,6 +39,28 @@ export default function Home() {
 
   const industries = useMemo(() => Array.from(new Set(deals.map(deal => deal.industry))).sort(), [deals]);
   const locations = useMemo(() => Array.from(new Set(deals.map(deal => deal.location))).sort(), [deals]);
+  const marketplaceStats = useMemo(() => {
+    const todayKey = new Date().toDateString();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const totalValuation = deals.reduce((sum, deal) => sum + (Number(deal.mandaInfo.valuation) || 0), 0);
+    const newToday = deals.filter(deal => {
+      const dateValue = deal.updatedAt || deal.createdAt;
+      return dateValue && new Date(dateValue).toDateString() === todayKey;
+    }).length;
+    const averageListingDays = deals.length
+      ? Math.max(1, Math.round(deals.reduce((sum, deal) => {
+          const createdAt = deal.createdAt ? new Date(deal.createdAt).getTime() : Date.now();
+          return sum + Math.max(0, Date.now() - createdAt) / dayMs;
+        }, 0) / deals.length))
+      : 0;
+
+    return {
+      totalValuation,
+      dealCount: deals.length,
+      newToday,
+      averageListingDays,
+    };
+  }, [deals]);
 
   const filteredDeals = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -142,10 +164,30 @@ export default function Home() {
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
         {[
-          { label: t('activeDealVol'), value: formatCompactNumber(4200000000, language), trend: t('upTrend'), color: 'text-blue-600' },
-          { label: t('verifiedInvestors'), value: '1,240', trend: t('verified'), color: 'text-slate-900' },
-          { label: t('dailyDealFlow'), value: '28', trend: t('newToday'), color: 'text-slate-900' },
-          { label: t('avgCloseTime'), value: `88 ${t('ago')}`, trend: t('optimal'), color: 'text-slate-900' },
+          {
+            label: t('activeDealVol'),
+            value: formatCompactNumber(marketplaceStats.totalValuation, language),
+            trend: language === 'vi' ? `${marketplaceStats.dealCount} thương vụ` : `${marketplaceStats.dealCount} deals`,
+            color: 'text-blue-600',
+          },
+          {
+            label: language === 'vi' ? 'Thương vụ đã xuất bản' : 'Published deals',
+            value: String(marketplaceStats.dealCount),
+            trend: language === 'vi' ? `${industries.length} ngành` : `${industries.length} industries`,
+            color: 'text-slate-900',
+          },
+          {
+            label: t('dailyDealFlow'),
+            value: String(marketplaceStats.newToday),
+            trend: t('newToday'),
+            color: 'text-slate-900',
+          },
+          {
+            label: language === 'vi' ? 'Thời gian niêm yết TB' : 'Average listing age',
+            value: `${marketplaceStats.averageListingDays} ${language === 'vi' ? 'ngày' : 'days'}`,
+            trend: language === 'vi' ? 'Theo dữ liệu hiện có' : 'From current deals',
+            color: 'text-slate-900',
+          },
         ].map((stat, i) => (
           <div key={i} className="glass-card min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
             <div className="metric-label mb-2">{stat.label}</div>
@@ -183,12 +225,13 @@ export default function Home() {
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="relative md:col-span-2 xl:col-span-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={searchTerm}
               onChange={event => setSearchTerm(event.target.value)}
               placeholder={t('searchPlaceholder')}
-              className="professional-input h-11 pl-9 text-sm"
+              className="h-11 w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50 py-2.5 pr-4 text-sm font-medium transition-all placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              style={{ paddingLeft: '3rem' }}
             />
           </div>
 
